@@ -1,0 +1,21 @@
+{
+  "name": "GLM API Launcher",
+  "short_name": "GLM Launcher",
+  "description": "GLM/TK API 平台登录器 — 全模型一键部署",
+  "icons": [
+    {
+      "src": "icons/32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/128x128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#2f54eb",
+  "background_color": "#ffffff"
+}

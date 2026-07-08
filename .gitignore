@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+src-tauri/target/
+
+# Build
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+build_log*.txt
+
+# Tauri
+src-tauri/gen/
+src-tauri/WixTools/

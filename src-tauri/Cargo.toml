@@ -1,0 +1,27 @@
+[package]
+name = "fast-mmd"
+version = "1.0.0"
+description = "Fast MMD - AI API Platform Launcher"
+authors = ["2bbb.cn"]
+edition = "2021"
+
+[lib]
+name = "fast_mmd_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-http = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+winreg = "0.52"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
