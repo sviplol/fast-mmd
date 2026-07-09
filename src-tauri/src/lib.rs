@@ -474,38 +474,58 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         fs::create_dir_all(&wb_dir).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // WorkBuddy 真正读取的是 local_storage/entry_*.info (gzip+base64 压缩的 JSON)
-    // 必须直接修改其中的 models 数组, 否则 UI 自定义列表看不到
-    let ls_dir = wb_dir.join("local_storage");
-    if !ls_dir.exists() {
-        return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
-    }
-
     // 关键: 部署前必须先关闭 WorkBuddy, 否则 WorkBuddy 退出时会把内存状态覆盖回 entry 文件
     kill_workbuddy_processes();
 
-    // 找到当前版本对应的 entry 文件 (取日期最新的)
-    let target_entry = find_workbuddy_entry(&ls_dir)?;
-    let entry_path = ls_dir.join(&target_entry);
-
-    // 读取并解压
-    let raw = fs::read(&entry_path).map_err(|e| format!("读取 entry 失败: {}", e))?;
-    let json_str = decode_entry_info(&raw)?;
-    let mut data: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| format!("解析 entry JSON 失败: {}", e))?;
-
-    // 备份
-    let bak = entry_path.with_extension("info.launcher_bak");
-    let _ = fs::copy(&entry_path, &bak);
-
-    // WorkBuddy 用 url 字段，必须带 /v1 后缀
+    // 写入 models.json (WorkBuddy 自定义模型模板文件)
+    let models_path = wb_dir.join("models.json");
+    if models_path.exists() {
+        let _ = fs::copy(&models_path, wb_dir.join("models.json.launcher_bak"));
+    }
     let wb_url = if config.base_url.ends_with("/v1") {
         config.base_url.clone()
     } else {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
+    let models_json_entries: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+        let mc = config.model_configs.iter().find(|m| {
+            m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
+        });
+        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
+        let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
+        serde_json::json!({
+            "id": mid,
+            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid.as_str()),
+            "vendor": "Custom",
+            "url": wb_url,
+            "apiKey": config.api_key,
+            "supportsToolCall": supports_tools,
+            "supportsImages": true,
+            "supportsReasoning": supports_reasoning,
+            "useCustomProtocol": false,
+            "reasoning": {
+                "supportedEfforts": ["max"]
+            }
+        })
+    }).collect();
+    fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
+        .map_err(|e| format!("写入 models.json 失败: {}", e))?;
 
-    // 先删除所有旧的 custom-local: 模型 (我们部署的 + 用户手动添加的, 全部替换)
+    // 写入 local_storage/entry_*.info (WorkBuddy 实际运行时读取的配置文件)
+    let ls_dir = wb_dir.join("local_storage");
+    if !ls_dir.exists() {
+        return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
+    }
+    let target_entry = find_workbuddy_entry(&ls_dir)?;
+    let entry_path = ls_dir.join(&target_entry);
+    let raw = fs::read(&entry_path).map_err(|e| format!("读取 entry 失败: {}", e))?;
+    let json_str = decode_entry_info(&raw)?;
+    let mut data: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| format!("解析 entry JSON 失败: {}", e))?;
+    let bak = entry_path.with_extension("info.launcher_bak");
+    let _ = fs::copy(&entry_path, &bak);
+
+    // 删除所有旧的 custom-local: 模型
     if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
         models.retain(|m| {
             let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -519,10 +539,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
-
         let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
-
         serde_json::json!({
             "disabled": false,
             "id": format!("custom-local:{}", mid),
@@ -539,19 +557,17 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         })
     }).collect();
 
-    // 把新模型追加到 models 数组
     if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
         for nm in &new_models {
             models.push(nm.clone());
         }
     }
 
-    // 重新压缩写回
     let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
     let encoded = encode_entry_info(&new_json)?;
     fs::write(&entry_path, encoded).map_err(|e| format!("写入 entry 失败: {}", e))?;
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 {} (entry_*.info)", config.selected_model_ids.len(), target_entry))
+    Ok(format!("WorkBuddy: {} 个模型已写入 models.json 和 {}", config.selected_model_ids.len(), target_entry))
 }
 
 /// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
@@ -899,31 +915,55 @@ fn read_codebuddy_config() -> Result<Option<serde_json::Value>, String> {
 
 fn read_workbuddy_config() -> Result<Option<serde_json::Value>, String> {
     let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
-    let ls_dir = wb_dir.join("local_storage");
-    if !ls_dir.exists() { return Ok(None); }
 
-    // 扫描所有 entry_*.info, 找到包含 custom-local: + fm- 的模型
-    for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
-        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with("entry_") || !name.ends_with(".info") {
-            continue;
+    // 1. 先检查 models.json (WorkBuddy 自定义模型模板)
+    let models_path = wb_dir.join("models.json");
+    if models_path.exists() {
+        if let Ok(content) = fs::read_to_string(&models_path) {
+            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(arr) = data.as_array() {
+                    for m in arr {
+                        let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                        let url = m.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        if key.starts_with("fm-") || url.contains("2bbb.cn") {
+                            return Ok(Some(serde_json::json!({
+                                "apiKey": key,
+                                "baseUrl": url,
+                                "deployed": true,
+                                "platform": "workbuddy",
+                            })));
+                        }
+                    }
+                }
+            }
         }
-        if let Ok(raw) = fs::read(entry.path()) {
-            if let Ok(json_str) = decode_entry_info(&raw) {
-                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    if let Some(models) = data.get("models").and_then(|m| m.as_array()) {
-                        for m in models {
-                            let mid = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-                            let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
-                            if mid.starts_with("custom-local:") && (key.starts_with("fm-") || url.contains("2bbb.cn")) {
-                                return Ok(Some(serde_json::json!({
-                                    "apiKey": key,
-                                    "baseUrl": url,
-                                    "deployed": true,
-                                    "platform": "workbuddy",
-                                })));
+    }
+
+    // 2. 再检查 entry_*.info (WorkBuddy 实际运行时读取的配置)
+    let ls_dir = wb_dir.join("local_storage");
+    if ls_dir.exists() {
+        for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
+            let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with("entry_") || !name.ends_with(".info") {
+                continue;
+            }
+            if let Ok(raw) = fs::read(entry.path()) {
+                if let Ok(json_str) = decode_entry_info(&raw) {
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(models) = data.get("models").and_then(|m| m.as_array()) {
+                            for m in models {
+                                let mid = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                                let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
+                                if mid.starts_with("custom-local:") && (key.starts_with("fm-") || url.contains("2bbb.cn")) {
+                                    return Ok(Some(serde_json::json!({
+                                        "apiKey": key,
+                                        "baseUrl": url,
+                                        "deployed": true,
+                                        "platform": "workbuddy",
+                                    })));
+                                }
                             }
                         }
                     }
@@ -1128,12 +1168,31 @@ fn check_workbuddy_config() -> DiagnosticItem {
         Some(d) if d.exists() => d,
         _ => return DiagnosticItem { id: "wb_no_dir".into(), category: "WorkBuddy".into(), title: ".workbuddy 目录不存在".into(), status: "warning".into(), detail: "请先启动一次 WorkBuddy".into(), fixable: false, fix_action: "".into() },
     };
+
+    // 1. 先检查 models.json
+    let models_path = wb_dir.join("models.json");
+    if models_path.exists() {
+        if let Ok(content) = fs::read_to_string(&models_path) {
+            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(arr) = data.as_array() {
+                    for m in arr {
+                        let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                        if key.starts_with("fm-") {
+                            let preview = if key.len() > 10 { format!("{}...", &key[..10]) } else { format!("{}...", key) };
+                            return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {}", preview), fixable: false, fix_action: "".into() };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 再检查 entry_*.info
     let ls_dir = wb_dir.join("local_storage");
     if !ls_dir.exists() {
         return DiagnosticItem { id: "wb_no_ls".into(), category: "WorkBuddy".into(), title: "local_storage 不存在".into(), status: "warning".into(), detail: "请先启动一次 WorkBuddy".into(), fixable: false, fix_action: "".into() };
     }
 
-    // 扫描所有 entry_*.info
     let mut found_ok = false;
     let mut found_key = String::new();
     let mut found_count = 0;
@@ -1173,7 +1232,7 @@ fn check_workbuddy_config() -> DiagnosticItem {
         let preview = if found_key.len() > 10 { format!("{}...", &found_key[..10]) } else { format!("{}...", found_key) };
         return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {} ({}个模型)", preview, found_count), fixable: false, fix_action: "".into() };
     }
-    DiagnosticItem { id: "wb_no_deploy".into(), category: "WorkBuddy".into(), title: "未部署我们的 API".into(), status: "warning".into(), detail: "entry_*.info 中未找到 custom-local: 模型".into(), fixable: true, fix_action: "deploy".into() }
+    DiagnosticItem { id: "wb_no_deploy".into(), category: "WorkBuddy".into(), title: "未部署我们的 API".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() }
 }
 
 fn check_codebuddy_config() -> DiagnosticItem {

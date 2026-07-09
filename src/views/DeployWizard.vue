@@ -122,7 +122,7 @@
           <div class="big-warning-content">
             部署完成后，请在软件中 <b>手动选择模型列表中的「自定义模型」</b>！<br>
             如果不手动选择自定义模型，配置将<b>不会生效</b>！<br><br>
-            <span style="color:#faad14">WorkBuddy / CodeBuddy CN 需要先登录腾讯云账号才能使用自定义模型</span>
+            <span style="color:#faad14">WorkBuddy / CodeBuddy CN 需要先登录对应的账号才能使用自定义模型</span>
           </div>
         </div>
 
