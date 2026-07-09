@@ -409,6 +409,13 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({"models": []})
     };
 
+    // CodeBuddy 的 url 必须带 /v1 后缀
+    let cb_base_url = if config.base_url.ends_with("/v1") {
+        config.base_url.clone()
+    } else {
+        format!("{}/v1", config.base_url.trim_end_matches('/'))
+    };
+
     // 构建新模型 — CodeBuddy 格式: url (不是 baseUrl), vendor
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
         // 找到对应的 model_config
@@ -420,7 +427,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "id": mid,
             "name": mc.and_then(|c| c.get("name")).cloned().unwrap_or(serde_json::json!(mid)),
             "vendor": "user",
-            "url": config.base_url,
+            "url": cb_base_url,
             "apiKey": config.api_key,
             "supportsToolCall": mc.and_then(|c| c.get("supportsToolCall")).cloned().unwrap_or(serde_json::json!(true)),
             "supportsImages": true,
@@ -475,6 +482,13 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let _ = fs::copy(&models_path, &bak);
     }
 
+    // WorkBuddy 的 baseUrl 必须带 /v1 后缀
+    let wb_base_url = if config.base_url.ends_with("/v1") {
+        config.base_url.clone()
+    } else {
+        format!("{}/v1", config.base_url.trim_end_matches('/'))
+    };
+
     // 推理等级列表（传给 WorkBuddy，控制模型可选的推理等级）
     let levels: Vec<String> = if config.reasoning_levels.is_empty() {
         vec![config.reasoning_level.clone()]
@@ -499,7 +513,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "id": mid,
             "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
             "apiKey": config.api_key,
-            "baseUrl": config.base_url,
+            "baseUrl": wb_base_url,
             "supportsReasoning": supports_reasoning,
             "onlyReasoning": supports_reasoning,
             "reasoning": {
