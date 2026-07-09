@@ -75,14 +75,23 @@ fn check_process(name: &str) -> bool {
 
 /// OpenCode: ~/.config/opencode/ 或 AppData\Local\Programs\@opencode-aidesktop\
 fn detect_opencode() -> DetectResult {
-    // 1. 进程
-    #[cfg(target_os = "windows")]
-    if check_process("OpenCode.exe") { return DetectResult { installed: true, path: None }; }
+    // 1. 配置文件优先（check_opencode_config 需要 path 指向含 opencode.global.dat 的目录）
+    let appdata = dirs::config_dir().map(|d| d.join("ai.opencode.desktop"));
+    if let Some(a) = &appdata {
+        if a.exists() { return DetectResult { installed: true, path: Some(a.to_string_lossy().into()) }; }
+    }
 
-    // 2. 配置文件
     let config = dirs::home_dir().map(|d| d.join(".config/opencode/opencode.json"));
     if let Some(c) = &config {
         if c.exists() { return DetectResult { installed: true, path: Some(c.to_string_lossy().into()) }; }
+    }
+
+    // 2. 进程检测
+    #[cfg(target_os = "windows")]
+    if check_process("OpenCode.exe") {
+        // 进程在运行但没找到配置，返回 appdata 默认路径
+        let default = dirs::config_dir().map(|d| d.join("ai.opencode.desktop")).unwrap_or_default();
+        return DetectResult { installed: true, path: Some(default.to_string_lossy().into()) };
     }
 
     // 3. 安装目录
@@ -91,36 +100,35 @@ fn detect_opencode() -> DetectResult {
         if i.exists() { return DetectResult { installed: true, path: Some(i.to_string_lossy().into()) }; }
     }
 
-    // 4. AppData 目录
-    let appdata = dirs::config_dir().map(|d| d.join("ai.opencode.desktop"));
-    if let Some(a) = &appdata {
-        if a.exists() { return DetectResult { installed: true, path: Some(a.to_string_lossy().into()) }; }
-    }
-
     DetectResult { installed: false, path: None }
 }
 
 /// Claude Code: ~/.claude/
 fn detect_claude_code() -> DetectResult {
-    #[cfg(target_os = "windows")]
-    if check_process("claude.exe") { return DetectResult { installed: true, path: None }; }
-
     let p = dirs::home_dir().map(|d| d.join(".claude"));
-    if let Some(p) = p {
+    if let Some(p) = &p {
         if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
+    }
+    #[cfg(target_os = "windows")]
+    if check_process("claude.exe") {
+        let default = dirs::home_dir().map(|d| d.join(".claude")).unwrap_or_default();
+        return DetectResult { installed: true, path: Some(default.to_string_lossy().into()) };
     }
     DetectResult { installed: false, path: None }
 }
 
 /// CodeBuddy CN: ~/.codebuddy/ 独立客户端
 fn detect_codebuddy() -> DetectResult {
-    #[cfg(target_os = "windows")]
-    if check_process("CodeBuddy CN.exe") { return DetectResult { installed: true, path: None }; }
-
-    // ~/.codebuddy 目录
+    // ~/.codebuddy 目录优先
     if let Some(home) = dirs::home_dir() {
         let cb_dir = home.join(".codebuddy");
         if cb_dir.exists() { return DetectResult { installed: true, path: Some(cb_dir.to_string_lossy().into()) }; }
+    }
+
+    #[cfg(target_os = "windows")]
+    if check_process("CodeBuddy CN.exe") {
+        let default = dirs::home_dir().map(|d| d.join(".codebuddy")).unwrap_or_default();
+        return DetectResult { installed: true, path: Some(default.to_string_lossy().into()) };
     }
 
     // 安装目录
@@ -134,18 +142,26 @@ fn detect_codebuddy() -> DetectResult {
 
 /// WorkBuddy: ~/.workbuddy/ 或 C:\Program Files\WorkBuddy\
 fn detect_workbuddy() -> DetectResult {
-    #[cfg(target_os = "windows")]
-    if check_process("WorkBuddy.exe") { return DetectResult { installed: true, path: None }; }
-
-    // ~/.workbuddy
+    // ~/.workbuddy 优先（配置文件在这里）
     if let Some(home) = dirs::home_dir() {
         let wb = home.join(".workbuddy");
         if wb.exists() { return DetectResult { installed: true, path: Some(wb.to_string_lossy().into()) }; }
     }
 
+    #[cfg(target_os = "windows")]
+    if check_process("WorkBuddy.exe") {
+        // 进程在运行但没找到 ~/.workbuddy，用默认路径
+        let home = dirs::home_dir().map(|d| d.join(".workbuddy")).unwrap_or_default();
+        return DetectResult { installed: true, path: Some(home.to_string_lossy().into()) };
+    }
+
     // C:\Program Files\WorkBuddy
-    for p in &[PathBuf::from("C:\\Program Files\\WorkBuddy"), PathBuf::from("C:\\Program Files (86)\\WorkBuddy")] {
-        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
+    for p in &[PathBuf::from("C:\\Program Files\\WorkBuddy"), PathBuf::from("C:\\Program Files (x86)\\WorkBuddy")] {
+        if p.exists() {
+            // 安装目录存在，但配置在 ~/.workbuddy
+            let home = dirs::home_dir().map(|d| d.join(".workbuddy")).unwrap_or_default();
+            return DetectResult { installed: true, path: Some(home.to_string_lossy().into()) };
+        }
     }
 
     DetectResult { installed: false, path: None }
@@ -153,17 +169,19 @@ fn detect_workbuddy() -> DetectResult {
 
 /// Claw Code (QClaw/OpenClaw): 仅检测实际安装
 fn detect_claw_code() -> DetectResult {
-    #[cfg(target_os = "windows")]
-    {
-        if check_process("QClaw.exe") { return DetectResult { installed: true, path: None }; }
-        if check_process("openclaw.exe") { return DetectResult { installed: true, path: None }; }
-    }
-
-    // ~/.openclaw 目录（必须有 openclaw.json 才算安装）
+    // ~/.openclaw 目录优先（必须有 openclaw.json 才算安装）
     if let Some(home) = dirs::home_dir() {
         let oc_dir = home.join(".openclaw");
         let cfg = oc_dir.join("openclaw.json");
         if cfg.exists() { return DetectResult { installed: true, path: Some(oc_dir.to_string_lossy().into()) }; }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if check_process("QClaw.exe") || check_process("openclaw.exe") {
+            let default = dirs::home_dir().map(|d| d.join(".openclaw")).unwrap_or_default();
+            return DetectResult { installed: true, path: Some(default.to_string_lossy().into()) };
+        }
     }
 
     // %LOCALAPPDATA%\Programs\QClaw（必须有 exe 才算安装）
@@ -177,13 +195,16 @@ fn detect_claw_code() -> DetectResult {
 
 /// Trae: 进程或安装目录
 fn detect_trae() -> DetectResult {
-    #[cfg(target_os = "windows")]
-    if check_process("Trae.exe") { return DetectResult { installed: true, path: None }; }
-
-    // ~/.trae
+    // ~/.trae 优先
     if let Some(home) = dirs::home_dir() {
         let p = home.join(".trae");
         if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
+    }
+
+    #[cfg(target_os = "windows")]
+    if check_process("Trae.exe") {
+        let default = dirs::home_dir().map(|d| d.join(".trae")).unwrap_or_default();
+        return DetectResult { installed: true, path: Some(default.to_string_lossy().into()) };
     }
 
     // AppData
@@ -946,7 +967,11 @@ fn check_opencode_config() -> DiagnosticItem {
     if !oc.installed {
         return DiagnosticItem { id: "oc_not_installed".into(), category: "OpenCode".into(), title: "OpenCode 未安装".into(), status: "warning".into(), detail: "未检测到 OpenCode".into(), fixable: false, fix_action: "".into() };
     }
-    let dir = PathBuf::from(oc.path.unwrap());
+    let path = match oc.path {
+        Some(p) => p,
+        None => return DiagnosticItem { id: "oc_no_path".into(), category: "OpenCode".into(), title: "检测到进程但未找到配置路径".into(), status: "warning".into(), detail: "请先部署配置".into(), fixable: true, fix_action: "deploy".into() },
+    };
+    let dir = PathBuf::from(path);
     let dat = dir.join("opencode.global.dat");
     if !dat.exists() {
         return DiagnosticItem { id: "oc_no_config".into(), category: "OpenCode".into(), title: "配置文件缺失".into(), status: "warning".into(), detail: "opencode.global.dat 不存在，请先部署".into(), fixable: true, fix_action: "deploy".into() };
@@ -974,7 +999,11 @@ fn check_claude_code_config() -> DiagnosticItem {
     if !cc.installed {
         return DiagnosticItem { id: "cc_not_installed".into(), category: "Claude Code".into(), title: "Claude Code 未安装".into(), status: "warning".into(), detail: "".into(), fixable: false, fix_action: "".into() };
     }
-    let dir = PathBuf::from(cc.path.unwrap());
+    let path = match cc.path {
+        Some(p) => p,
+        None => return DiagnosticItem { id: "cc_no_path".into(), category: "Claude Code".into(), title: "检测到进程但未找到配置路径".into(), status: "warning".into(), detail: "请先部署配置".into(), fixable: true, fix_action: "deploy".into() },
+    };
+    let dir = PathBuf::from(path);
     let settings = dir.join("settings.json");
     if !settings.exists() {
         return DiagnosticItem { id: "cc_no_config".into(), category: "Claude Code".into(), title: "settings.json 不存在".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() };
@@ -1001,7 +1030,11 @@ fn check_workbuddy_config() -> DiagnosticItem {
     if !wb.installed {
         return DiagnosticItem { id: "wb_not_installed".into(), category: "WorkBuddy".into(), title: "WorkBuddy 未安装".into(), status: "warning".into(), detail: "".into(), fixable: false, fix_action: "".into() };
     }
-    let dir = PathBuf::from(wb.path.unwrap());
+    let path = match wb.path {
+        Some(p) => p,
+        None => return DiagnosticItem { id: "wb_no_path".into(), category: "WorkBuddy".into(), title: "检测到进程但未找到配置路径".into(), status: "warning".into(), detail: "请先部署配置".into(), fixable: true, fix_action: "deploy".into() },
+    };
+    let dir = PathBuf::from(path);
     let models = dir.join("models.json");
     if !models.exists() {
         return DiagnosticItem { id: "wb_no_config".into(), category: "WorkBuddy".into(), title: "models.json 不存在".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() };
@@ -1014,7 +1047,8 @@ fn check_workbuddy_config() -> DiagnosticItem {
                         for m in arr {
                             let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
                             if key.starts_with("fm-") {
-                                return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {}...", &key[..10]), fixable: false, fix_action: "".into() };
+                                let preview = if key.len() > 10 { format!("{}...", &key[..10]) } else { format!("{}...", key) };
+                                return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {}", preview), fixable: false, fix_action: "".into() };
                             }
                         }
                     }
