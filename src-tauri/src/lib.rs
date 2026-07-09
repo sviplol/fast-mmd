@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs;
 
 // 推理等级排序（从低到高）
@@ -474,13 +474,26 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         fs::create_dir_all(&wb_dir).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    let models_path = wb_dir.join("models.json");
-
-    // 先备份旧文件
-    if models_path.exists() {
-        let bak = wb_dir.join("models.json.launcher_bak");
-        let _ = fs::copy(&models_path, &bak);
+    // WorkBuddy 真正读取的是 local_storage/entry_*.info (gzip+base64 压缩的 JSON)
+    // 必须直接修改其中的 models 数组, 否则 UI 自定义列表看不到
+    let ls_dir = wb_dir.join("local_storage");
+    if !ls_dir.exists() {
+        return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
     }
+
+    // 找到当前版本对应的 entry 文件 (匹配 genieVersion 或取最新日期)
+    let target_entry = find_workbuddy_entry(&ls_dir)?;
+    let entry_path = ls_dir.join(&target_entry);
+
+    // 读取并解压
+    let raw = fs::read(&entry_path).map_err(|e| format!("读取 entry 失败: {}", e))?;
+    let json_str = decode_entry_info(&raw)?;
+    let mut data: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| format!("解析 entry JSON 失败: {}", e))?;
+
+    // 备份
+    let bak = entry_path.with_extension("info.launcher_bak");
+    let _ = fs::copy(&entry_path, &bak);
 
     // WorkBuddy 用 url 字段，必须带 /v1 后缀
     let wb_url = if config.base_url.ends_with("/v1") {
@@ -489,32 +502,167 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // 所有模型统一格式 — 严格按 WorkBuddy 界面手动添加验证可用的格式
+    // 先删除所有旧的 custom-local: 模型 (我们部署的 + 用户手动添加的, 全部替换)
+    if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
+        models.retain(|m| {
+            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            !id.starts_with("custom-local:")
+        });
+    }
+
+    // 添加新的 custom-local: 模型 — 严格按 WorkBuddy UI 手动添加的格式
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
 
+        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
+        let deep_thinking = mc.and_then(|c| c.get("deepThinking")).and_then(|v| v.as_bool()).unwrap_or(true);
+        let max_in = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
+        let max_out = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(16000);
+        let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
+
         serde_json::json!({
-            "id": mid,
-            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
+            "disabled": false,
+            "id": format!("custom-local:{}", mid),
+            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid.as_str()),
             "vendor": "Custom",
             "url": wb_url,
             "apiKey": config.api_key,
-            "supportsToolCall": true,
+            "supportsToolCall": supports_tools,
             "supportsImages": true,
-            "supportsReasoning": true,
+            "supportsReasoning": supports_reasoning,
             "useCustomProtocol": false,
             "reasoning": {
                 "supportedEfforts": ["max"]
-            }
+            },
+            "aliases": [mid],
+            "tags": ["custom"]
         })
     }).collect();
 
-    let models_json = serde_json::to_string_pretty(&serde_json::Value::Array(new_models)).unwrap();
-    fs::write(&models_path, models_json).map_err(|e| format!("写入失败: {}", e))?;
+    // 把新模型追加到 models 数组
+    if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
+        for nm in &new_models {
+            models.push(nm.clone());
+        }
+    }
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 ~/.workbuddy/models.json", config.selected_model_ids.len()))
+    // 重新压缩写回
+    let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
+    let encoded = encode_entry_info(&new_json)?;
+    fs::write(&entry_path, encoded).map_err(|e| format!("写入 entry 失败: {}", e))?;
+
+    Ok(format!("WorkBuddy: {} 个模型已写入 {} (entry_*.info)", config.selected_model_ids.len(), target_entry))
+}
+
+/// 在 local_storage 目录中找到当前 WorkBuddy 版本对应的 entry_*.info 文件
+fn find_workbuddy_entry(ls_dir: &Path) -> Result<String, String> {
+    let mut entries: Vec<(String, String, String)> = Vec::new(); // (filename, version, date)
+
+    for entry in fs::read_dir(ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("entry_") || !name.ends_with(".info") {
+            continue;
+        }
+        // 尝试解压读取版本
+        if let Ok(raw) = fs::read(entry.path()) {
+            if let Ok(json_str) = decode_entry_info(&raw) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                    let ver = data.get("genieVersion").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let date = data.get("date").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if !ver.is_empty() {
+                        entries.push((name, ver, date));
+                    }
+                }
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("未找到有效的 entry_*.info 文件, 请先启动 WorkBuddy".into());
+    }
+
+    // 优先匹配 WorkBuddy.exe 的版本, 找不到则取日期最新的
+    let wb_ver = detect_workbuddy_version();
+    if let Some(ref ver) = wb_ver {
+        for (name, ev, _) in &entries {
+            if ver.starts_with(ev) || ev == ver.trim_end_matches(".0") {
+                return Ok(name.clone());
+            }
+        }
+    }
+
+    // 取日期最新的
+    entries.sort_by(|a, b| b.2.cmp(&a.2));
+    Ok(entries[0].0.clone())
+}
+
+/// 获取 WorkBuddy.exe 版本号
+fn detect_workbuddy_version() -> Option<String> {
+    let candidates = [
+        r"C:\Program Files\WorkBuddy\WorkBuddy.exe",
+        r"C:\Program Files (x86)\WorkBuddy\WorkBuddy.exe",
+    ];
+    for p in &candidates {
+        if std::path::Path::new(p).exists() {
+            // 用 PowerShell 读取版本
+            let output = std::process::Command::new("powershell")
+                .args(&["-NoProfile", "-Command",
+                    &format!("(Get-Item '{}').VersionInfo.ProductVersion", p)])
+                .output().ok()?;
+            if output.status.success() {
+                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !ver.is_empty() {
+                    return Some(ver);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 解码 entry_*.info: 去引号 -> base64 解码 -> gzip 解压
+fn decode_entry_info(raw: &[u8]) -> Result<String, String> {
+    use base64::Engine;
+    let s = String::from_utf8_lossy(raw).trim().to_string();
+    // 去掉外层引号
+    let s = if s.starts_with('"') && s.ends_with('"') {
+        s[1..s.len()-1].to_string()
+    } else {
+        s
+    };
+    // base64 解码
+    let b = base64::engine::general_purpose::STANDARD.decode(&s)
+        .map_err(|e| format!("base64 解码失败: {}", e))?;
+    // gzip 解压
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    let mut gz = GzDecoder::new(&b[..]);
+    let mut txt = String::new();
+    gz.read_to_string(&mut txt).map_err(|e| format!("gzip 解压失败: {}", e))?;
+    Ok(txt)
+}
+
+/// 编码 entry_*.info: JSON -> gzip 压缩 -> base64 编码 -> 加引号
+fn encode_entry_info(json_str: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    // gzip 压缩
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(json_str.as_bytes()).map_err(|e| format!("gzip 压缩失败: {}", e))?;
+    let compressed = encoder.finish().map_err(|e| format!("gzip 完成失败: {}", e))?;
+
+    // base64 编码
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&compressed);
+
+    // 加引号
+    let result = format!("\"{}\"", b64);
+    Ok(result.into_bytes())
 }
 
 /// Trae 部署: 写入 ~/.trae/settings.json
@@ -766,24 +914,36 @@ fn read_codebuddy_config() -> Result<Option<serde_json::Value>, String> {
 }
 
 fn read_workbuddy_config() -> Result<Option<serde_json::Value>, String> {
-    let wb_path = detect_workbuddy().path.ok_or("WorkBuddy 未安装")?;
-    let models_path = PathBuf::from(&wb_path).join("models.json");
-    if !models_path.exists() { return Ok(None); }
+    let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
+    let ls_dir = wb_dir.join("local_storage");
+    if !ls_dir.exists() { return Ok(None); }
 
-    let content = fs::read_to_string(&models_path).map_err(|e| format!("读取失败: {}", e))?;
-    let models: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!([]));
-
-    if let Some(arr) = models.as_array() {
-        for m in arr {
-            let api_key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-            let url = m.get("url").and_then(|v| v.as_str()).unwrap_or("");
-            if api_key.starts_with("fm-") || url.contains("2bbb.cn") {
-                return Ok(Some(serde_json::json!({
-                    "apiKey": api_key,
-                    "baseUrl": url,
-                    "deployed": true,
-                    "platform": "workbuddy",
-                })));
+    // 扫描所有 entry_*.info, 找到包含 custom-local: + fm- 的模型
+    for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("entry_") || !name.ends_with(".info") {
+            continue;
+        }
+        if let Ok(raw) = fs::read(entry.path()) {
+            if let Ok(json_str) = decode_entry_info(&raw) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                    if let Some(models) = data.get("models").and_then(|m| m.as_array()) {
+                        for m in models {
+                            let mid = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                            let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
+                            if mid.starts_with("custom-local:") && (key.starts_with("fm-") || url.contains("2bbb.cn")) {
+                                return Ok(Some(serde_json::json!({
+                                    "apiKey": key,
+                                    "baseUrl": url,
+                                    "deployed": true,
+                                    "platform": "workbuddy",
+                                })));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -979,35 +1139,57 @@ fn check_workbuddy_config() -> DiagnosticItem {
     if !wb.installed {
         return DiagnosticItem { id: "wb_not_installed".into(), category: "WorkBuddy".into(), title: "WorkBuddy 未安装".into(), status: "warning".into(), detail: "".into(), fixable: false, fix_action: "".into() };
     }
-    let path = match wb.path {
-        Some(p) => p,
-        None => return DiagnosticItem { id: "wb_no_path".into(), category: "WorkBuddy".into(), title: "检测到进程但未找到配置路径".into(), status: "warning".into(), detail: "请先部署配置".into(), fixable: true, fix_action: "deploy".into() },
+    let wb_dir = dirs::home_dir().map(|d| d.join(".workbuddy"));
+    let wb_dir = match wb_dir {
+        Some(d) if d.exists() => d,
+        _ => return DiagnosticItem { id: "wb_no_dir".into(), category: "WorkBuddy".into(), title: ".workbuddy 目录不存在".into(), status: "warning".into(), detail: "请先启动一次 WorkBuddy".into(), fixable: false, fix_action: "".into() },
     };
-    let dir = PathBuf::from(path);
-    let models = dir.join("models.json");
-    if !models.exists() {
-        return DiagnosticItem { id: "wb_no_config".into(), category: "WorkBuddy".into(), title: "models.json 不存在".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() };
+    let ls_dir = wb_dir.join("local_storage");
+    if !ls_dir.exists() {
+        return DiagnosticItem { id: "wb_no_ls".into(), category: "WorkBuddy".into(), title: "local_storage 不存在".into(), status: "warning".into(), detail: "请先启动一次 WorkBuddy".into(), fixable: false, fix_action: "".into() };
     }
-    match fs::read_to_string(&models) {
-        Ok(content) => {
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(data) => {
-                    if let Some(arr) = data.as_array() {
-                        for m in arr {
+
+    // 扫描所有 entry_*.info
+    let mut found_ok = false;
+    let mut found_key = String::new();
+    let mut found_count = 0;
+    let mut any_entry = false;
+
+    for entry in fs::read_dir(&ls_dir).unwrap() {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("entry_") || !name.ends_with(".info") { continue }
+        any_entry = true;
+        if let Ok(raw) = fs::read(entry.path()) {
+            if let Ok(json_str) = decode_entry_info(&raw) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                    if let Some(models) = data.get("models").and_then(|m| m.as_array()) {
+                        for m in models {
+                            let mid = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
                             let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-                            if key.starts_with("fm-") {
-                                let preview = if key.len() > 10 { format!("{}...", &key[..10]) } else { format!("{}...", key) };
-                                return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {}", preview), fixable: false, fix_action: "".into() };
+                            let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
+                            if mid.starts_with("custom-local:") && (key.starts_with("fm-") || url.contains("2bbb.cn")) {
+                                found_count += 1;
+                                if !found_ok {
+                                    found_ok = true;
+                                    found_key = key.to_string();
+                                }
                             }
                         }
                     }
-                    DiagnosticItem { id: "wb_no_deploy".into(), category: "WorkBuddy".into(), title: "未部署我们的 API".into(), status: "warning".into(), detail: "models.json 中未找到 fm- 开头的 Key".into(), fixable: true, fix_action: "deploy".into() }
                 }
-                Err(e) => DiagnosticItem { id: "wb_parse_error".into(), category: "WorkBuddy".into(), title: "models.json 损坏".into(), status: "error".into(), detail: format!("{}", e), fixable: true, fix_action: "restore_backup".into() }
             }
         }
-        Err(e) => DiagnosticItem { id: "wb_read_error".into(), category: "WorkBuddy".into(), title: "读取失败".into(), status: "error".into(), detail: format!("{}", e), fixable: false, fix_action: "".into() }
     }
+
+    if !any_entry {
+        return DiagnosticItem { id: "wb_no_entry".into(), category: "WorkBuddy".into(), title: "未找到 entry 配置".into(), status: "warning".into(), detail: "请先启动一次 WorkBuddy".into(), fixable: false, fix_action: "".into() };
+    }
+    if found_ok {
+        let preview = if found_key.len() > 10 { format!("{}...", &found_key[..10]) } else { format!("{}...", found_key) };
+        return DiagnosticItem { id: "wb_ok".into(), category: "WorkBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {} ({}个模型)", preview, found_count), fixable: false, fix_action: "".into() };
+    }
+    DiagnosticItem { id: "wb_no_deploy".into(), category: "WorkBuddy".into(), title: "未部署我们的 API".into(), status: "warning".into(), detail: "entry_*.info 中未找到 custom-local: 模型".into(), fixable: true, fix_action: "deploy".into() }
 }
 
 fn check_codebuddy_config() -> DiagnosticItem {
@@ -1269,9 +1451,42 @@ fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<St
             Ok("CodeBuddy CN 配置已清除".into())
         }
         "workbuddy" => {
-            let models_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy/models.json");
+            // 从 entry_*.info 中移除我们的 custom-local: 模型
+            let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
+            let ls_dir = wb_dir.join("local_storage");
+            if ls_dir.exists() {
+                for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
+                    let entry = match entry { Ok(e) => e, Err(_) => continue };
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !name.starts_with("entry_") || !name.ends_with(".info") { continue }
+                    if let Ok(raw) = fs::read(entry.path()) {
+                        if let Ok(json_str) = decode_entry_info(&raw) {
+                            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                let mut changed = false;
+                                if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
+                                    let before = models.len();
+                                    models.retain(|m| {
+                                        let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                        let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                                        let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
+                                        !(id.starts_with("custom-local:") && (url.contains("2bbb.cn") || key.starts_with("fm-")))
+                                    });
+                                    if models.len() != before { changed = true; }
+                                }
+                                if changed {
+                                    let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
+                                    let encoded = encode_entry_info(&new_json)?;
+                                    fs::write(entry.path(), encoded).map_err(|e| format!("写入失败: {}", e))?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 也清除 models.json (旧版兼容)
+            let models_path = wb_dir.join("models.json");
             if models_path.exists() {
-                fs::write(&models_path, "[]").map_err(|e| format!("写入失败: {}", e))?;
+                let _ = fs::write(&models_path, "[]");
             }
             Ok("WorkBuddy 配置已清除".into())
         }
@@ -1805,6 +2020,15 @@ fn get_error_info(code: &str) -> serde_json::Value {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 单实例锁: 如果已有实例运行, 聚焦到已有窗口而不是启动新实例
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+                let _ = w.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
