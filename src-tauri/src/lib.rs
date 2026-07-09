@@ -478,6 +478,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     kill_workbuddy_processes();
 
     // 写入 models.json (WorkBuddy 自定义模型模板文件)
+    // 严格按用户手动添加验证可用的格式: name=id小写, 无 reasoning 字段
     let models_path = wb_dir.join("models.json");
     if models_path.exists() {
         let _ = fs::copy(&models_path, wb_dir.join("models.json.launcher_bak"));
@@ -495,17 +496,14 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
         serde_json::json!({
             "id": mid,
-            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid.as_str()),
+            "name": mid.as_str(),
             "vendor": "Custom",
             "url": wb_url,
             "apiKey": config.api_key,
             "supportsToolCall": supports_tools,
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
-            "useCustomProtocol": false,
-            "reasoning": {
-                "supportedEfforts": ["max"]
-            }
+            "useCustomProtocol": false
         })
     }).collect();
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
@@ -544,7 +542,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({
             "disabled": false,
             "id": format!("custom-local:{}", mid),
-            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid.as_str()),
+            "name": mid.as_str(),
             "vendor": "Custom",
             "url": wb_url,
             "apiKey": config.api_key,
