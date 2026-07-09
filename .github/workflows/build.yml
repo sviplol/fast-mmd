@@ -18,15 +18,15 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
-            artifact_name: "Fast-MMD-Windows-安装版.exe"
+            artifact_name: "Fast-MMD-Windows-Setup.exe"
             artifact_glob: "src-tauri/target/release/bundle/nsis/*.exe"
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-            artifact_name: "Fast-MMD-Mac-ARM版.dmg"
+            artifact_name: "Fast-MMD-Mac-ARM.dmg"
             artifact_glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
           - platform: macos-13
             args: "--target x86_64-apple-darwin"
-            artifact_name: "Fast-MMD-Mac-Intel版.dmg"
+            artifact_name: "Fast-MMD-Mac-Intel.dmg"
             artifact_glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
 
     runs-on: ${{ matrix.platform }}
@@ -74,6 +74,7 @@ jobs:
           PHPDISK_INFO: ${{ env.PHPDISK_INFO }}
           FASTMODELS_FID: ${{ env.FASTMODELS_FID }}
         run: |
+          pip3 install requests -q 2>/dev/null || true
           python3 -c "
           import os, sys, time, requests, glob
 
