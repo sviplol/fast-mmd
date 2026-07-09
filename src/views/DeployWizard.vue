@@ -68,20 +68,19 @@
 
       <!-- Step 2: 推理配置 -->
       <div v-if="step===2" class="step-content">
-        <div class="reason-hint">💡 推理等级支持多选，选中的等级将全部写入平台配置，用户可在软件中自由切换</div>
+        <div class="reason-hint">选择推理等级（部署后可在平台内切换模型时使用）</div>
         <div class="reasoning-grid">
           <div v-for="r in REASONING_LEVELS" :key="r.value" class="reason-card"
-            :class="{sel:reasoningLevels.includes(r.value)}" @click="toggleReasoning(r.value)">
+            :class="{sel:reasoningLevel===r.value}" @click="reasoningLevel=r.value">
             <div class="reason-name">{{ r.label }}</div>
             <div class="reason-cost">{{ r.cost }}</div>
           </div>
         </div>
         <label class="deep-toggle">
-          <input type="checkbox" v-model="deepThinking" /> 🧠 深度思考
+          <input type="checkbox" v-model="deepThinking" /> 深度思考
         </label>
-        <div v-if="highestLevel" class="warn-box">
-          ⚠️ 最高选中等级: {{ highestLevel.label }}，消耗约 {{ highestLevel.cost }} 倍积分
-          <span v-if="reasoningLevels.includes('max')">，这是最高等级！</span>
+        <div class="rate-notice">
+          💡 百分百1比1倍率抵扣同步 — 各推理等级积分消耗按上游实际倍率1:1同步抵扣，无任何额外加价
         </div>
       </div>
 
@@ -90,11 +89,8 @@
         <div class="confirm-box">
           <div class="confirm-row"><span>平台</span><b>{{ selectedPlatforms.map(p=>PLATFORMS[p].name).join(', ') }}</b></div>
           <div class="confirm-row"><span>模型数</span><b>{{ selectedModels.length }} 个</b></div>
-          <div class="confirm-row"><span>推理等级</span><b>{{ reasoningLevels.map(v=>getLevelName(v)).join(', ') }}</b></div>
+          <div class="confirm-row"><span>推理等级</span><b>{{ getLevel()?.label }} ({{ getLevel()?.cost }})</b></div>
           <div class="confirm-row"><span>深度思考</span><b>{{ deepThinking?'✅':'❌' }}</b></div>
-        </div>
-        <div v-if="reasoningLevels.includes('max')" class="warn-box" style="margin-top:8px">
-          🔴 max 等级消耗 12 倍积分！
         </div>
         <button class="deploy-go" @click="doDeploy" :disabled="deploying">
           {{ deploying ? '部署中...' : '确认部署' }}
@@ -122,10 +118,11 @@
 
         <!-- 大提示：手动选择自定义模型 -->
         <div class="big-warning">
-          <div class="big-warning-title">⚠️ 重要提示</div>
+          <div class="big-warning-title">重要提示</div>
           <div class="big-warning-content">
             部署完成后，请在软件中 <b>手动选择模型列表中的「自定义模型」</b>！<br>
-            如果不手动选择自定义模型，配置将<b>不会生效</b>！
+            如果不手动选择自定义模型，配置将<b>不会生效</b>！<br><br>
+            <span style="color:#faad14">WorkBuddy / CodeBuddy CN 需要先登录腾讯云账号才能使用自定义模型</span>
           </div>
         </div>
 
@@ -171,8 +168,8 @@ const detectDone = ref(false);
 const installed = ref({});
 const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
-const reasoningLevels = ref(["high", "max"]);
-const deepThinking = ref(false);
+const reasoningLevel = ref("max");
+const deepThinking = ref(true);
 const deploying = ref(false);
 const deployResults = ref([]);
 const showVideo = ref(false);
@@ -219,7 +216,8 @@ async function detectPlatforms() {
       const { invoke } = await import("@tauri-apps/api/core");
       installed.value = await invoke("detect_all_platforms");
     } else {
-      installed.value = { opencode:{installed:true}, claudecode:{installed:true}, codebuddy:{installed:true}, workbuddy:{installed:false}, trae:{installed:false} };
+      // Web 模式 — 不模拟，全部未安装
+      installed.value = {};
     }
     for (const key of Object.keys(PLATFORMS)) {
       if (installed.value[key]?.installed) { selectedPlatforms.value = [key]; break; }
@@ -229,38 +227,17 @@ async function detectPlatforms() {
   finally { detecting.value = false; }
 }
 
-function getLevel() { return REASONING_LEVELS.find(r => r.value === reasoningLevels.value[0]); }
-function getLevelName(v) { return REASONING_LEVELS.find(r => r.value === v)?.label || v; }
-
-function toggleReasoning(value) {
-  const i = reasoningLevels.value.indexOf(value);
-  if (i >= 0) {
-    if (reasoningLevels.value.length > 1) reasoningLevels.value.splice(i, 1);
-  } else {
-    reasoningLevels.value.push(value);
-  }
-}
-
-const highestLevel = computed(() => {
-  if (!reasoningLevels.value.length) return null;
-  let highest = null;
-  let maxIdx = -1;
-  for (const v of reasoningLevels.value) {
-    const idx = REASONING_LEVELS.findIndex(r => r.value === v);
-    if (idx > maxIdx) { maxIdx = idx; highest = REASONING_LEVELS[idx]; }
-  }
-  return highest;
-});
+function getLevel() { return REASONING_LEVELS.find(r => r.value === reasoningLevel.value); }
 
 async function doDeploy() {
   deploying.value = true;
   deployResults.value = [];
   try {
-    const baseUrl = "https://" + props.serverPlatform + ".2bbb.cn/v1";
+    const baseUrl = "https://" + props.serverPlatform + ".2bbb.cn";
     const modelObjs = ALL_MODELS.filter(m => selectedModels.value.includes(m.id));
     for (const p of selectedPlatforms.value) {
-      const configs = modelObjs.map(m => buildModelConfig(m, reasoningLevels.value, deepThinking.value));
-      const config = buildDeployConfig(p, props.apiKey, baseUrl, modelObjs[0]?.id || "glm-5.2", reasoningLevels.value, deepThinking.value);
+      const configs = modelObjs.map(m => buildModelConfig(m, reasoningLevel.value, deepThinking.value));
+      const config = buildDeployConfig(p, props.apiKey, baseUrl, modelObjs[0]?.id || "glm-5.2", reasoningLevel.value, deepThinking.value);
       config.model_configs = configs;
       config.selected_model_ids = selectedModels.value;
       try {
@@ -346,6 +323,7 @@ async function restartApp(platformKey) {
 .reason-cost { font-size:10px; color:#ff4d4f; }
 .deep-toggle { display:flex; align-items:center; gap:6px; font-size:14px; margin-bottom:8px; cursor:pointer; }
 .warn-box { background:#fff7e6; border:1px solid #ffd591; border-radius:8px; padding:8px 12px; font-size:12px; color:#d46b08; }
+.rate-notice { background:#f6ffed; border:1px solid #b7eb8f; border-radius:8px; padding:10px 12px; font-size:13px; color:#389e0d; margin-top:8px; line-height:1.5; }
 
 /* Confirm */
 .confirm-box { border:1px solid #eee; border-radius:8px; padding:12px; }

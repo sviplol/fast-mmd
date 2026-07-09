@@ -195,21 +195,25 @@ function copyText(text) {
   showToast("已复制", "success");
 }
 
-// 卡号格式校验
+// 卡号格式校验 + 过滤前缀
 function validateCard(card) {
-  return /^[0-9]+-[A-Z0-9]+$/i.test(card);
+  // 自动过滤"卡号："、"卡号:"、"卡号 "等前缀
+  let cleaned = card.replace(/^卡号[：:\s]*/i, '').replace(/^card[：:\s]*/i, '').trim();
+  return { valid: /^[0-9]+-[A-Z0-9]+$/i.test(cleaned), cleaned };
 }
 
 // 卡号激活
 async function doActivate() {
-  const card = cardInput.value.trim();
-  if (!card) { showToast("请输入卡号", "error"); return; }
-  if (!validateCard(card)) { showToast("卡号格式不正确，应为 5200-XXXX 格式", "error"); return; }
+  const raw = cardInput.value.trim();
+  if (!raw) { showToast("请输入卡号", "error"); return; }
+  // 过滤"卡号："等前缀
+  const { valid, cleaned } = validateCard(raw);
+  if (!valid) { showToast("卡号格式不正确，应为 5200-XXXX 格式", "error"); return; }
   loading.value = true;
   try {
     // 1. 先查本地记录，避免重复兑换
     const saved = store.get();
-    if (saved.card === card && saved.apiKey) {
+    if (saved.card === cleaned && saved.apiKey) {
       // 验证 key 是否还有效
       const verify = await lookup(saved.platform || platform.value, saved.apiKey);
       if (verify.ok) {
@@ -223,17 +227,20 @@ async function doActivate() {
       }
     }
 
-    // 2. 兑换卡号
-    const r = await redeemCard(platform.value, card, "");
+    // 2. 兑换卡号（服务器端支持已使用卡号重新登录）
+    const r = await redeemCard(platform.value, cleaned, "");
     if (r.ok) {
       apiKey.value = r.key;
-      balance.value = r.balance;
-      store.set({ apiKey: r.key, balance: r.balance, platform: platform.value, card });
-      showToast("激活成功！余额: " + r.balance, "success");
+      balance.value = r.balance || 0;
+      store.set({ apiKey: r.key, balance: r.balance || 0, platform: platform.value, card: cleaned });
+      showToast("登录成功", "success");
       stage.value = "ready";
-    } else if (r.msg && (r.msg.includes("已使用") || r.msg.includes("已兑换"))) {
-      // 卡号已使用 — 引导到账号登录
-      showToast("此卡号已使用过，请用账号登录查看", "error");
+    } else if (r.msg && (r.msg.includes("不存在") || r.msg.includes("封禁") || r.msg.includes("删除"))) {
+      // 卡号被封禁/删除
+      showToast(r.msg, "error");
+    } else if (r.msg && r.msg.includes("已使用")) {
+      // 不应该走到这里了（服务器已支持重新登录），但兜底
+      showToast("此卡号已使用，请用账号登录", "error");
       setTimeout(() => { stage.value = "login"; }, 1500);
     } else {
       showToast(r.msg || "卡号无效", "error");
@@ -392,11 +399,11 @@ async function enterWithKey() {
   stage.value = "main";
 }
 
-// 自动登录 — 验证 Key 有效性
+// 自动登录 — 验证 Key 有效性，封禁/删除的 Key 直接清除
 try {
   const saved = store.get();
   if (saved.apiKey) {
-    // 验证 key
+    // 验证 key — 如果被封禁/删除 lookup 会返回错误
     lookup(saved.platform || "glm", saved.apiKey).then(r => {
       if (r.ok) {
         apiKey.value = saved.apiKey;
@@ -405,9 +412,10 @@ try {
         cardInput.value = saved.card || "";
         stage.value = "main";
       } else {
-        // Key 失效 — 回到激活页
-        showToast("登录已过期，请重新激活", "error");
+        // Key 失效/封禁/删除 — 清除记录，回到激活页
         store.clear();
+        if (r.msg) showToast(r.msg, "error");
+        else showToast("登录已过期，请重新激活", "error");
       }
     });
   } else if (saved.token) {

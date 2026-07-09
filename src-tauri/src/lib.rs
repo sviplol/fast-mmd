@@ -5,6 +5,24 @@ use std::fs;
 // 推理等级排序（从低到高）
 const REASONING_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(target_os = "windows")]
+trait NoWindow {
+    fn no_window(&mut self) -> &mut Self;
+}
+
+#[cfg(target_os = "windows")]
+impl NoWindow for std::process::Command {
+    fn no_window(&mut self) -> &mut Self {
+        self.creation_flags(CREATE_NO_WINDOW);
+        self
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct DeployConfig {
     #[serde(rename = "type")]
@@ -36,192 +54,150 @@ fn detect_all_platforms() -> std::collections::HashMap<String, DetectResult> {
     r.insert("claudecode".into(), detect_claude_code());
     r.insert("codebuddy".into(), detect_codebuddy());
     r.insert("workbuddy".into(), detect_workbuddy());
+    r.insert("clawcode".into(), detect_claw_code());
     r.insert("trae".into(), detect_trae());
     r
 }
 
-/// OpenCode: AppData/Roaming/ai.opencode.desktop/
-fn detect_opencode() -> DetectResult {
-    let p = dirs::config_dir().map(|d| d.join("ai.opencode.desktop"));
-    if let Some(p) = p {
-        if p.exists() {
-            return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) };
-        }
+/// 通用：检测进程名（静默，无黑框）
+#[cfg(target_os = "windows")]
+fn check_process(name: &str) -> bool {
+    if let Ok(output) = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("IMAGENAME eq {}", name), "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return stdout.to_lowercase().contains(&name.to_lowercase());
     }
+    false
+}
+
+/// OpenCode: ~/.config/opencode/ 或 AppData\Local\Programs\@opencode-aidesktop\
+fn detect_opencode() -> DetectResult {
+    // 1. 进程
+    #[cfg(target_os = "windows")]
+    if check_process("OpenCode.exe") { return DetectResult { installed: true, path: None }; }
+
+    // 2. 配置文件
+    let config = dirs::home_dir().map(|d| d.join(".config/opencode/opencode.json"));
+    if let Some(c) = &config {
+        if c.exists() { return DetectResult { installed: true, path: Some(c.to_string_lossy().into()) }; }
+    }
+
+    // 3. 安装目录
+    let install = dirs::data_dir().map(|d| d.join("Programs/@opencode-aidesktop"));
+    if let Some(i) = &install {
+        if i.exists() { return DetectResult { installed: true, path: Some(i.to_string_lossy().into()) }; }
+    }
+
+    // 4. AppData 目录
+    let appdata = dirs::config_dir().map(|d| d.join("ai.opencode.desktop"));
+    if let Some(a) = &appdata {
+        if a.exists() { return DetectResult { installed: true, path: Some(a.to_string_lossy().into()) }; }
+    }
+
     DetectResult { installed: false, path: None }
 }
 
 /// Claude Code: ~/.claude/
 fn detect_claude_code() -> DetectResult {
+    #[cfg(target_os = "windows")]
+    if check_process("claude.exe") { return DetectResult { installed: true, path: None }; }
+
     let p = dirs::home_dir().map(|d| d.join(".claude"));
     if let Some(p) = p {
-        if p.exists() {
-            return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) };
-        }
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
     }
     DetectResult { installed: false, path: None }
 }
 
-/// CodeBuddy: 检测多种安装方式
+/// CodeBuddy CN: ~/.codebuddy/ 独立客户端
 fn detect_codebuddy() -> DetectResult {
-    // 1. VS Code 扩展目录
-    let ext_dirs: Vec<PathBuf> = vec![
-        dirs::home_dir().map(|d| d.join(".vscode/extensions")),
-        dirs::home_dir().map(|d| d.join(".cursor/extensions")),
-        dirs::home_dir().map(|d| d.join(".vscode-insiders/extensions")),
-        dirs::home_dir().map(|d| d.join(".vscode-oss/extensions")),
-    ].into_iter().flatten().collect();
-
-    for ext_dir in &ext_dirs {
-        if ext_dir.exists() {
-            if let Ok(entries) = fs::read_dir(ext_dir) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.contains("tencent-cloud") || name.contains("coding-copilot") || name.contains("codebuddy") {
-                        return DetectResult { installed: true, path: Some(entry.path().to_string_lossy().into()) };
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. globalStorage 目录
-    let gs_dirs: Vec<PathBuf> = vec![
-        dirs::config_dir().map(|d| d.join("Code/User/globalStorage")),
-        dirs::config_dir().map(|d| d.join("Code - Insiders/User/globalStorage")),
-        dirs::config_dir().map(|d| d.join("Cursor/User/globalStorage")),
-        dirs::config_dir().map(|d| d.join("Trae/User/globalStorage")),
-    ].into_iter().flatten().collect();
-
-    for gs in &gs_dirs {
-        if gs.exists() {
-            for sub in &["tencent-cloud.coding-copilot", "codebuddy"] {
-                let cb_dir = gs.join(sub);
-                if cb_dir.exists() {
-                    return DetectResult { installed: true, path: Some(cb_dir.to_string_lossy().into()) };
-                }
-            }
-        }
-    }
-
-    // 3. 开始菜单快捷方式
-    let start_menu_dirs: Vec<PathBuf> = vec![
-        dirs::config_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs")),
-        dirs::data_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs")),
-    ].into_iter().flatten().collect();
-
-    for sm in &start_menu_dirs {
-        if sm.exists() {
-            // 递归搜索 CodeBuddy
-            if let Ok(entries) = fs::read_dir(sm) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_lowercase();
-                    if name.contains("codebuddy") {
-                        return DetectResult { installed: true, path: Some(entry.path().to_string_lossy().into()) };
-                    }
-                    // 递归搜索子目录
-                    if entry.path().is_dir() {
-                        if let Ok(sub_entries) = fs::read_dir(entry.path()) {
-                            for sub in sub_entries.flatten() {
-                                let sub_name = sub.file_name().to_string_lossy().to_lowercase();
-                                if sub_name.contains("codebuddy") {
-                                    return DetectResult { installed: true, path: Some(sub.path().to_string_lossy().into()) };
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Windows 注册表卸载列表
     #[cfg(target_os = "windows")]
-    {
-        use winreg::enums::*;
-        use winreg::RegKey;
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-        for root in &[hkcu, hklm] {
-            if let Ok(uninstall) = root.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall") {
-                for sub in uninstall.enum_keys().flatten() {
-                    let name_lower = sub.to_lowercase();
-                    if name_lower.contains("codebuddy") || name_lower.contains("coding-copilot") {
-                        return DetectResult { installed: true, path: None };
-                    }
-                    // 也检查 DisplayName
-                    if let Ok(key) = uninstall.open_subkey(&sub) {
-                        if let Ok(display_name) = key.get_value::<String, _>("DisplayName") {
-                            if display_name.to_lowercase().contains("codebuddy") {
-                                return DetectResult { installed: true, path: None };
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    if check_process("CodeBuddy CN.exe") { return DetectResult { installed: true, path: None }; }
+
+    // ~/.codebuddy 目录
+    if let Some(home) = dirs::home_dir() {
+        let cb_dir = home.join(".codebuddy");
+        if cb_dir.exists() { return DetectResult { installed: true, path: Some(cb_dir.to_string_lossy().into()) }; }
     }
 
-    // 5. 桌面快捷方式
-    if let Some(desktop) = dirs::desktop_dir() {
-        if let Ok(entries) = fs::read_dir(&desktop) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_lowercase();
-                if name.contains("codebuddy") {
-                    return DetectResult { installed: true, path: Some(entry.path().to_string_lossy().into()) };
-                }
-            }
-        }
+    // 安装目录
+    if let Some(d) = dirs::data_dir() {
+        let p = d.join("Programs/CodeBuddy CN");
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
     }
 
     DetectResult { installed: false, path: None }
 }
 
-/// WorkBuddy: ~/.workbuddy/
+/// WorkBuddy: ~/.workbuddy/ 或 C:\Program Files\WorkBuddy\
 fn detect_workbuddy() -> DetectResult {
-    let paths: Vec<PathBuf> = vec![
-        dirs::home_dir().map(|d| d.join(".workbuddy")),
-        dirs::config_dir().map(|d| d.join("WorkBuddy")),
-        dirs::data_dir().map(|d| d.join("WorkBuddy")),
-    ].into_iter().flatten().collect();
-
-    for p in &paths {
-        if p.exists() && p.is_dir() {
-            return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) };
-        }
-    }
-
     #[cfg(target_os = "windows")]
-    {
-        use winreg::enums::*;
-        use winreg::RegKey;
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        if let Ok(uninstall) = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall") {
-            for sub in uninstall.enum_keys().flatten() {
-                if sub.to_lowercase().contains("workbuddy") {
-                    return DetectResult { installed: true, path: None };
-                }
-            }
-        }
+    if check_process("WorkBuddy.exe") { return DetectResult { installed: true, path: None }; }
+
+    // ~/.workbuddy
+    if let Some(home) = dirs::home_dir() {
+        let wb = home.join(".workbuddy");
+        if wb.exists() { return DetectResult { installed: true, path: Some(wb.to_string_lossy().into()) }; }
     }
+
+    // C:\Program Files\WorkBuddy
+    for p in &[PathBuf::from("C:\\Program Files\\WorkBuddy"), PathBuf::from("C:\\Program Files (86)\\WorkBuddy")] {
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
+    }
+
     DetectResult { installed: false, path: None }
 }
 
-/// Trae: AppData/Roaming/Trae/
+/// Claw Code (QClaw/OpenClaw): 仅检测实际安装
+fn detect_claw_code() -> DetectResult {
+    #[cfg(target_os = "windows")]
+    {
+        if check_process("QClaw.exe") { return DetectResult { installed: true, path: None }; }
+        if check_process("openclaw.exe") { return DetectResult { installed: true, path: None }; }
+    }
+
+    // ~/.openclaw 目录（必须有 openclaw.json 才算安装）
+    if let Some(home) = dirs::home_dir() {
+        let oc_dir = home.join(".openclaw");
+        let cfg = oc_dir.join("openclaw.json");
+        if cfg.exists() { return DetectResult { installed: true, path: Some(oc_dir.to_string_lossy().into()) }; }
+    }
+
+    // %LOCALAPPDATA%\Programs\QClaw（必须有 exe 才算安装）
+    if let Some(d) = dirs::data_dir() {
+        let exe = d.join("Programs/QClaw/QClaw.exe");
+        if exe.exists() { return DetectResult { installed: true, path: Some(exe.to_string_lossy().into()) }; }
+    }
+
+    DetectResult { installed: false, path: None }
+}
+
+/// Trae: 进程或安装目录
 fn detect_trae() -> DetectResult {
-    let p = dirs::config_dir().map(|d| d.join("Trae"));
-    if let Some(p) = p {
-        if p.exists() {
-            return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) };
-        }
+    #[cfg(target_os = "windows")]
+    if check_process("Trae.exe") { return DetectResult { installed: true, path: None }; }
+
+    // ~/.trae
+    if let Some(home) = dirs::home_dir() {
+        let p = home.join(".trae");
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
     }
-    // 也检查 Local
-    let p2 = dirs::data_dir().map(|d| d.join("Trae"));
-    if let Some(p2) = p2 {
-        if p2.exists() {
-            return DetectResult { installed: true, path: Some(p2.to_string_lossy().into()) };
-        }
+
+    // AppData
+    if let Some(d) = dirs::config_dir() {
+        let p = d.join("Trae");
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
     }
+
+    // 安装目录
+    if let Some(d) = dirs::data_dir() {
+        let p = d.join("Programs/Trae");
+        if p.exists() { return DetectResult { installed: true, path: Some(p.to_string_lossy().into()) }; }
+    }
+
     DetectResult { installed: false, path: None }
 }
 
@@ -233,105 +209,127 @@ fn deploy_to_platform(config: DeployConfig) -> Result<String, String> {
         "claudecode" => deploy_claude_code(&config),
         "codebuddy" => deploy_codebuddy(&config),
         "workbuddy" => deploy_workbuddy(&config),
+        "clawcode" => deploy_claw_code(&config),
         "trae" => deploy_trae(&config),
         _ => Err("未知平台".into()),
     }
 }
 
-/// OpenCode 部署: 修改 opencode.global.dat 的 model 字段
-/// model 是嵌套 JSON 字符串，包含 user(模型列表) + variant(推理等级 map)
-/// 部署前清除旧的 antigravity 配置，避免重复堆积
+/// OpenCode 部署: 修改 opencode.json + opencode.global.dat
+/// 1. opencode.json: 写入 provider.antigravity 配置
+/// 2. opencode.global.dat: 解析 model 字段(嵌套JSON字符串)，在 variant 对象中设置 "antigravity:模型ID": 推理等级
 fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
-    let oc_dir = detect_opencode().path.ok_or("OpenCode 未安装")?;
-    let dir = PathBuf::from(&oc_dir);
-    let dat_path = dir.join("opencode.global.dat");
+    // 1. opencode.json — 主配置文件
+    let oc_config_dir = dirs::home_dir()
+        .ok_or("无法获取用户目录")?
+        .join(".config")
+        .join("opencode");
 
-    let mut data: serde_json::Value = if dat_path.exists() {
-        fs::read_to_string(&dat_path).ok()
+    if !oc_config_dir.exists() {
+        fs::create_dir_all(&oc_config_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    let config_path = oc_config_dir.join("opencode.json");
+
+    let mut oc_config: serde_json::Value = if config_path.exists() {
+        fs::read_to_string(&config_path).ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
 
-    if let Some(obj) = data.as_object_mut() {
-        // 解析 model 字段（嵌套 JSON 字符串）
-        let model_str = obj.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let mut model_obj: serde_json::Value = if let Some(ref ms) = model_str {
-            serde_json::from_str(ms).unwrap_or(serde_json::json!({}))
-        } else {
-            serde_json::json!({})
-        };
+    // 构建模型配置
+    let mut models_map = serde_json::Map::new();
+    for model_id in &config.selected_model_ids {
+        let mc = config.model_configs.iter().find(|m| {
+            m.get("id").and_then(|v| v.as_str()) == Some(model_id.as_str())
+        });
 
-        if let Some(mo) = model_obj.as_object_mut() {
-            // 0. 清除旧的 antigravity 配置（避免重复堆积）
-            if let Some(user_arr) = mo.get_mut("user").and_then(|v| v.as_array_mut()) {
-                user_arr.retain(|m| {
-                    m.get("providerID").and_then(|v| v.as_str()).map_or(true, |p| p != "antigravity")
-                });
-            }
-            if let Some(variants) = mo.get_mut("variant").and_then(|v| v.as_object_mut()) {
-                let old_keys: Vec<String> = variants.keys().filter(|k| k.starts_with("antigravity:")).cloned().collect();
-                for k in old_keys { variants.remove(&k); }
-            }
-            if let Some(recent) = mo.get_mut("recent").and_then(|v| v.as_array_mut()) {
-                recent.retain(|m| {
-                    m.get("providerID").and_then(|v| v.as_str()).map_or(true, |p| p != "antigravity")
-                });
-            }
+        let model_name = mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(model_id);
 
-            // 1. 更新 user 列表 — 添加所有选中的模型
-            let mut user_list: Vec<serde_json::Value> = Vec::new();
-            for model_id in &config.selected_model_ids {
-                user_list.push(serde_json::json!({
-                    "modelID": model_id,
-                    "providerID": "antigravity",
-                    "visibility": "show"
-                }));
+        models_map.insert(model_id.clone(), serde_json::json!({
+            "name": model_name,
+            "options": {
+                "reasoningEffort": config.reasoning_level
+            },
+            "attachment": true,
+            "modalities": {"input": ["text", "image"]},
+            "limit": {
+                "context": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
+                "output": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(64000)
             }
-            mo.insert("user".to_string(), serde_json::Value::Array(user_list));
-
-            // 2. 更新 variant — 每个模型写入所有选中的推理等级
-            let mut variants = serde_json::Map::new();
-            for model_id in &config.selected_model_ids {
-                // 写入所有选中的等级（用户可在 OpenCode 内切换）
-                let levels = if config.reasoning_levels.is_empty() {
-                    vec![config.reasoning_level.clone()]
-                } else {
-                    config.reasoning_levels.clone()
-                };
-                // variant 的值是最高等级（默认），但 available 列出所有可选
-                let highest = levels.iter()
-                    .filter_map(|l| REASONING_ORDER.iter().position(|&r| r == l).map(|p| (l, p)))
-                    .max_by_key(|(_, p)| *p)
-                    .map(|(l, _)| l.clone())
-                    .unwrap_or_else(|| config.reasoning_level.clone());
-                variants.insert(
-                    format!("antigravity:{}", model_id),
-                    serde_json::json!(highest),
-                );
-            }
-            mo.insert("variant".to_string(), serde_json::Value::Object(variants));
-
-            // 3. 更新 recent — 默认第一个模型
-            if let Some(first_model) = config.selected_model_ids.first() {
-                mo.insert("recent".to_string(), serde_json::json!([{
-                    "modelID": first_model,
-                    "providerID": "antigravity"
-                }]));
-            }
-        }
-
-        // 写回 model 字段（重新序列化为 JSON 字符串）
-        obj.insert("model".to_string(), serde_json::Value::String(
-            serde_json::to_string(&model_obj).unwrap_or_default()
-        ));
+        }));
     }
 
-    fs::write(&dat_path, serde_json::to_string_pretty(&data).unwrap())
-        .map_err(|e| format!("写入失败: {}", e))?;
+    // 更新 provider.antigravity
+    if let Some(obj) = oc_config.as_object_mut() {
+        if !obj.contains_key("provider") {
+            obj.insert("provider".into(), serde_json::json!({}));
+        }
+        if let Some(provider) = obj.get_mut("provider").and_then(|v| v.as_object_mut()) {
+            provider.remove("antigravity");
+            provider.insert("antigravity".into(), serde_json::json!({
+                "name": "Antigravity Tools",
+                "npm": "@ai-sdk/openai-compatible",
+                "options": {
+                    "baseURL": config.base_url,
+                    "apiKey": config.api_key
+                },
+                "models": serde_json::Value::Object(models_map)
+            }));
+        }
+        if let Some(first_model) = config.selected_model_ids.first() {
+            obj.insert("model".into(), serde_json::json!(format!("antigravity/{}", first_model)));
+        }
+    }
 
-    Ok(format!("OpenCode: {} 个模型已配置，推理等级: {}", config.selected_model_ids.len(), config.reasoning_level))
+    fs::write(&config_path, serde_json::to_string_pretty(&oc_config).unwrap())
+        .map_err(|e| format!("写入 opencode.json 失败: {}", e))?;
+
+    // 2. opencode.global.dat — 解析 model 字段(嵌套JSON字符串)，设置 variant
+    let dat_path = dirs::config_dir()
+        .map(|d| d.join("ai.opencode.desktop/opencode.global.dat"));
+
+    if let Some(dp) = dat_path {
+        if dp.exists() {
+            if let Ok(content) = fs::read_to_string(&dp) {
+                if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(model_str) = data.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                        if let Ok(mut model_obj) = serde_json::from_str::<serde_json::Value>(&model_str) {
+                            // 在 variant 对象中设置每个模型的推理等级
+                            if let Some(variants) = model_obj.get_mut("variant").and_then(|v| v.as_object_mut()) {
+                                // 清除旧的 antigravity variant（保留 auto）
+                                let old_keys: Vec<String> = variants.keys()
+                                    .filter(|k| k.starts_with("antigravity:") && !k.ends_with(":auto"))
+                                    .cloned().collect();
+                                for k in old_keys { variants.remove(&k); }
+
+                                // 写入新的 variant
+                                for model_id in &config.selected_model_ids {
+                                    variants.insert(
+                                        format!("antigravity:{}", model_id),
+                                        serde_json::json!(config.reasoning_level),
+                                    );
+                                }
+                            }
+
+                            // 写回 model 字段（重新序列化为 JSON 字符串）
+                            data.as_object_mut().map(|o| {
+                                o.insert("model".into(), serde_json::Value::String(
+                                    serde_json::to_string(&model_obj).unwrap_or_default()
+                                ));
+                            });
+
+                            let _ = fs::write(&dp, serde_json::to_string_pretty(&data).unwrap());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(format!("OpenCode: {} 个模型已写入 opencode.json + variant 已设置", config.selected_model_ids.len()))
 }
 
 /// Claude Code 部署: 修改 ~/.claude/settings.json
@@ -392,178 +390,307 @@ fn deploy_claude_code(config: &DeployConfig) -> Result<String, String> {
     Ok(format!("Claude Code: {} 个模型已配置 (默认: {})，推理等级: {} (可选: {})", config.selected_model_ids.len(), config.selected_model_ids.first().unwrap_or(&config.model), highest, levels.join(",")))
 }
 
-/// CodeBuddy 部署: state.vscdb (DPAPI加密，生成配置文件)
+/// CodeBuddy CN 部署: 写入 ~/.codebuddy/models.json
+/// 格式: {"models": [{id, name, vendor, url, apiKey, supportsToolCall, supportsImages, supportsReasoning, ...}]}
 fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
-    let cb_path = detect_codebuddy().path.ok_or("CodeBuddy 未安装")?;
-    let base = PathBuf::from(&cb_path);
-
-    // 构建模型配置
-    let model_configs: Vec<serde_json::Value> = if !config.model_configs.is_empty() {
-        config.model_configs.clone()
-    } else {
-        let levels = if config.reasoning_levels.is_empty() {
-            vec![config.reasoning_level.clone()]
-        } else {
-            config.reasoning_levels.clone()
-        };
-        vec![serde_json::json!({
-            "id": config.model,
-            "supportsReasoning": true,
-            "onlyReasoning": !levels.is_empty() && !levels.iter().all(|l| l == "none"),
-            "reasoning": { "effort": levels.iter().filter(|l| *l != "none").next().unwrap_or(&config.reasoning_level), "summary": "auto", "available": levels },
-            "supportsToolCall": true,
-            "supportsImages": true,
-            "maxInputTokens": 200000,
-            "maxOutputTokens": 64000,
-        })]
-    };
-
-    // 找 state.vscdb 路径 — 检查 Code 和 Cursor
-    let mut state_db: Option<PathBuf> = None;
-    if let Some(cfg) = dirs::config_dir() {
-        let code_db = cfg.join("Code/User/state.vscdb");
-        let cursor_db = cfg.join("Cursor/User/state.vscdb");
-        if code_db.exists() {
-            state_db = Some(code_db);
-        } else if cursor_db.exists() {
-            state_db = Some(cursor_db);
-        }
+    let cb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".codebuddy");
+    if !cb_dir.exists() {
+        fs::create_dir_all(&cb_dir).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 生成配置文件
-    let config_path = base.join("glm_deploy_config.json");
-    let deploy_data = serde_json::json!({
-        "platform": "codebuddy",
-        "state_db_path": state_db.as_ref().map(|p| p.to_string_lossy().to_string()),
-        "api_key": config.api_key,
-        "base_url": config.base_url,
-        "models": config.selected_model_ids,
-        "model_configs": model_configs,
-        "reasoning_level": config.reasoning_level,
-        "deep_thinking": config.deep_thinking,
-        "instructions": "由于 CodeBuddy-Product-Cache 使用 DPAPI 加密，请通过 CodeBuddy 扩展 UI 手动导入此配置，或使用工具解密后修改 state.vscdb",
-    });
+    let models_path = cb_dir.join("models.json");
 
-    fs::write(&config_path, serde_json::to_string_pretty(&deploy_data).unwrap())
-        .map_err(|e| format!("写入失败: {}", e))?;
-
-    Ok(format!("CodeBuddy: {} 个模型配置已生成 (需手动导入)", config.selected_model_ids.len()))
-}
-
-/// WorkBuddy 部署: ~/.workbuddy/models.json
-fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
-    let wb_dir = detect_workbuddy().path.ok_or("WorkBuddy 未安装")?;
-    let dir = PathBuf::from(&wb_dir);
-    let models_path = dir.join("models.json");
-
-    let mut models: serde_json::Value = if models_path.exists() {
+    // CodeBuddy 格式: {"models": [...]}
+    let mut existing: serde_json::Value = if models_path.exists() {
         fs::read_to_string(&models_path).ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(serde_json::json!([]))
+            .unwrap_or(serde_json::json!({"models": []}))
     } else {
-        serde_json::json!([])
+        serde_json::json!({"models": []})
     };
 
-    let new_models: Vec<serde_json::Value> = if !config.model_configs.is_empty() {
-        config.model_configs.iter().map(|mc| {
-            let mut m = mc.clone();
-            if let Some(obj) = m.as_object_mut() {
-                obj.insert("apiKey".into(), serde_json::json!(config.api_key));
-                obj.insert("baseUrl".into(), serde_json::json!(config.base_url));
-                if let Some(max_in) = mc.get("maxInputTokens") {
-                    obj.insert("maxAllowedSize".into(), max_in.clone());
-                }
-            }
-            m
-        }).collect()
-    } else {
-        vec![serde_json::json!({
-            "id": config.model,
-            "apiKey": config.api_key,
-            "baseUrl": config.base_url,
-        })]
-    };
-
-    if let Some(arr) = models.as_array_mut() {
-        // 0. 清除旧的平台配置（apiKey 以 fm- 开头 或 baseUrl 含 2bbb.cn）
-        arr.retain(|m| {
-            let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-            let url = m.get("baseUrl").and_then(|v| v.as_str()).unwrap_or("");
-            !key.starts_with("fm-") && !url.contains("2bbb.cn")
+    // 构建新模型 — CodeBuddy 格式: url (不是 baseUrl), vendor
+    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+        // 找到对应的 model_config
+        let mc = config.model_configs.iter().find(|m| {
+            m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
 
-        for new_m in &new_models {
-            let new_id = new_m.get("id").and_then(|v| v.as_str());
-            let mut found = false;
-            for existing in arr.iter_mut() {
-                if existing.get("id").and_then(|v| v.as_str()) == new_id {
-                    if let (Some(e), Some(n)) = (existing.as_object_mut(), new_m.as_object()) {
-                        for (k, v) in n { e.insert(k.clone(), v.clone()); }
-                    }
-                    found = true;
-                    break;
-                }
+        let mut m = serde_json::json!({
+            "id": mid,
+            "name": mc.and_then(|c| c.get("name")).cloned().unwrap_or(serde_json::json!(mid)),
+            "vendor": "user",
+            "url": config.base_url,
+            "apiKey": config.api_key,
+            "supportsToolCall": mc.and_then(|c| c.get("supportsToolCall")).cloned().unwrap_or(serde_json::json!(true)),
+            "supportsImages": true,
+            "supportsReasoning": mc.and_then(|c| c.get("supportsReasoning")).cloned().unwrap_or(serde_json::json!(true)),
+        });
+
+        // 加推理配置
+        if let Some(obj) = m.as_object_mut() {
+            if let Some(reasoning) = mc.and_then(|c| c.get("reasoning")) {
+                obj.insert("reasoning".into(), reasoning.clone());
             }
-            if !found { arr.push(new_m.clone()); }
+            if let Some(max_in) = mc.and_then(|c| c.get("maxInputTokens")) {
+                obj.insert("maxInputTokens".into(), max_in.clone());
+            }
+            if let Some(max_out) = mc.and_then(|c| c.get("maxOutputTokens")) {
+                obj.insert("maxOutputTokens".into(), max_out.clone());
+            }
+        }
+
+        m
+    }).collect();
+
+    // 清除所有旧的（不管是 fm- 还是 sk- 还是其他）
+    if let Some(arr) = existing.get_mut("models").and_then(|v| v.as_array_mut()) {
+        arr.clear();
+        for new_m in &new_models {
+            arr.push(new_m.clone());
         }
     } else {
-        models = serde_json::Value::Array(new_models);
+        existing = serde_json::json!({"models": new_models});
     }
 
-    fs::write(&models_path, serde_json::to_string_pretty(&models).unwrap())
+    fs::write(&models_path, serde_json::to_string_pretty(&existing).unwrap())
         .map_err(|e| format!("写入失败: {}", e))?;
 
-    let default_model = config.selected_model_ids.first().unwrap_or(&config.model);
-    let _ = fs::write(dir.join("config.json"), serde_json::json!({
-        "api_key": config.api_key, "base_url": config.base_url, "model": default_model
-    }).to_string());
-    let _ = fs::write(dir.join(".env"), format!(
-        "OPENAI_API_KEY={}\nOPENAI_BASE_URL={}\nMODEL={}\n",
-        config.api_key, config.base_url, default_model
-    ));
-
-    Ok(format!("WorkBuddy: {} 个模型已写入", config.selected_model_ids.len()))
+    Ok(format!("CodeBuddy CN: {} 个模型已写入 ~/.codebuddy/models.json", config.selected_model_ids.len()))
 }
 
-/// Trae 部署: 同 CodeBuddy (state.vscdb)
-fn deploy_trae(config: &DeployConfig) -> Result<String, String> {
-    let trae_dir = detect_trae().path.ok_or("Trae 未安装")?;
-    let dir = PathBuf::from(&trae_dir);
+/// WorkBuddy 部署: 写入 ~/.workbuddy/models.json
+/// 格式: 裸数组 [{id, name, apiKey, baseUrl, deepThinking, reasoningLevels, reasoning, ...}]
+fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
+    let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
+    if !wb_dir.exists() {
+        fs::create_dir_all(&wb_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
 
-    // 生成配置文件
-    let config_path = dir.join("glm_deploy_config.json");
-    let model_configs: Vec<serde_json::Value> = if !config.model_configs.is_empty() {
-        config.model_configs.clone()
+    let models_path = wb_dir.join("models.json");
+
+    // 先备份旧文件
+    if models_path.exists() {
+        let bak = wb_dir.join("models.json.launcher_bak");
+        let _ = fs::copy(&models_path, &bak);
+    }
+
+    // 推理等级列表（传给 WorkBuddy，控制模型可选的推理等级）
+    let levels: Vec<String> = if config.reasoning_levels.is_empty() {
+        vec![config.reasoning_level.clone()]
     } else {
-        let levels = if config.reasoning_levels.is_empty() {
-            vec![config.reasoning_level.clone()]
-        } else {
-            config.reasoning_levels.clone()
-        };
-        vec![serde_json::json!({
-            "id": config.model,
-            "supportsReasoning": true,
-            "reasoning": { "effort": levels.iter().filter(|l| *l != "none").next().unwrap_or(&config.reasoning_level), "available": levels },
-            "supportsToolCall": true,
-            "maxInputTokens": 200000,
-            "maxOutputTokens": 64000,
-        })]
+        config.reasoning_levels.clone()
     };
 
-    let deploy_data = serde_json::json!({
-        "platform": "trae",
-        "trae_dir": dir.to_string_lossy(),
-        "api_key": config.api_key,
-        "base_url": config.base_url,
-        "models": config.selected_model_ids,
-        "model_configs": model_configs,
-        "instructions": "通过 Trae 扩展设置导入自定义模型配置",
-    });
+    // 构建模型列表 — 严格按 WorkBuddy 实际格式（含 deepThinking + reasoningLevels）
+    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+        let mc = config.model_configs.iter().find(|m| {
+            m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
+        });
 
-    fs::write(&config_path, serde_json::to_string_pretty(&deploy_data).unwrap())
+        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
+        let model_levels: Vec<String> = if supports_reasoning {
+            levels.clone()
+        } else {
+            vec!["none".to_string()]
+        };
+
+        let mut m = serde_json::json!({
+            "id": mid,
+            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
+            "apiKey": config.api_key,
+            "baseUrl": config.base_url,
+            "supportsReasoning": supports_reasoning,
+            "onlyReasoning": supports_reasoning,
+            "reasoning": {
+                "effort": config.reasoning_level,
+                "summary": "auto"
+            },
+            "reasoningLevels": model_levels,
+            "deepThinking": config.deep_thinking && supports_reasoning,
+            "supportsToolCall": mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true),
+            "supportsImages": true,
+            "maxAllowedSize": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
+            "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
+            "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(64000)
+        });
+
+        // 非 none 等级加上 reasoning.available
+        if supports_reasoning && levels.iter().any(|l| l != "none") {
+            if let Some(obj) = m.as_object_mut() {
+                if let Some(reasoning) = obj.get_mut("reasoning").and_then(|v| v.as_object_mut()) {
+                    reasoning.insert("available".into(), serde_json::json!(levels));
+                }
+            }
+        }
+
+        m
+    }).collect();
+
+    let models_json = serde_json::to_string_pretty(&serde_json::Value::Array(new_models)).unwrap();
+    fs::write(&models_path, models_json).map_err(|e| format!("写入失败: {}", e))?;
+
+    Ok(format!("WorkBuddy: {} 个模型已写入 ~/.workbuddy/models.json (含 deepThinking + reasoningLevels)", config.selected_model_ids.len()))
+}
+
+/// Trae 部署: 写入 ~/.trae/settings.json
+/// 格式: {"trae.ai.enabled": true, "trae.ai.model": "xxx", "trae.ai.thinking.enabled": true, ...}
+fn deploy_trae(config: &DeployConfig) -> Result<String, String> {
+    // Trae 配置目录: ~/.trae/
+    let trae_dir = dirs::home_dir()
+        .ok_or("无法获取用户目录")?
+        .join(".trae");
+
+    if !trae_dir.exists() {
+        fs::create_dir_all(&trae_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    let settings_path = trae_dir.join("settings.json");
+
+    // 读取现有配置
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        fs::read_to_string(&settings_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let default_model = config.selected_model_ids.first().unwrap_or(&config.model);
+
+    // 推理等级映射: Trae 用 SOLO/Builder/Chat
+    let trae_mode = if config.deep_thinking || config.reasoning_levels.iter().any(|l| l == "max" || l == "xhigh") {
+        "SOLO"
+    } else if config.reasoning_levels.iter().any(|l| l == "high" || l == "medium") {
+        "Builder"
+    } else {
+        "Chat"
+    };
+
+    if let Some(obj) = settings.as_object_mut() {
+        obj.insert("trae.ai.enabled".into(), serde_json::json!(true));
+        obj.insert("trae.ai.model".into(), serde_json::json!(default_model));
+        obj.insert("trae.ai.thinking.enabled".into(), serde_json::json!(config.deep_thinking));
+        obj.insert("trae.ai.thinking.budgetTokens".into(), serde_json::json!(32000));
+        obj.insert("trae.ai.mode".into(), serde_json::json!(trae_mode));
+        obj.insert("trae.ai.apiKey".into(), serde_json::json!(config.api_key));
+        obj.insert("trae.ai.baseUrl".into(), serde_json::json!(config.base_url));
+        obj.insert("trae.rules.autoLoad".into(), serde_json::json!(true));
+    }
+
+    fs::write(&settings_path, serde_json::to_string_pretty(&settings).unwrap())
         .map_err(|e| format!("写入失败: {}", e))?;
 
-    Ok(format!("Trae: {} 个模型配置已生成", config.selected_model_ids.len()))
+    Ok(format!("Trae: {} 个模型配置已写入 ~/.trae/settings.json (模式: {})", config.selected_model_ids.len(), trae_mode))
+}
+
+/// Claw Code 部署: 写入 ~/.openclaw/openclaw.json
+/// 格式: {"models": {"providers": {"custom": {type, baseUrl, apiKey, models: [...]}}, "agents": {"defaults": {"thinking": {"level": "max"}}}}}
+fn deploy_claw_code(config: &DeployConfig) -> Result<String, String> {
+    let claw_dir = dirs::home_dir()
+        .ok_or("无法获取用户目录")?
+        .join(".openclaw");
+
+    if !claw_dir.exists() {
+        fs::create_dir_all(&claw_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    let config_path = claw_dir.join("openclaw.json");
+
+    let mut claw_config: serde_json::Value = if config_path.exists() {
+        fs::read_to_string(&config_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // 推理等级
+    let highest = if config.reasoning_levels.is_empty() {
+        config.reasoning_level.clone()
+    } else {
+        config.reasoning_levels.iter()
+            .filter_map(|l| REASONING_ORDER.iter().position(|&r| r == l).map(|p| (l, p)))
+            .max_by_key(|(_, p)| *p)
+            .map(|(l, _)| l.clone())
+            .unwrap_or_else(|| config.reasoning_level.clone())
+    };
+
+    // 构建模型列表
+    let models_list: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+        let mc = config.model_configs.iter().find(|m| {
+            m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
+        });
+
+        let mut m = serde_json::json!({
+            "id": mid,
+            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
+            "reasoning": mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true),
+        });
+
+        if let Some(obj) = m.as_object_mut() {
+            if config.deep_thinking {
+                obj.insert("thinking".into(), serde_json::json!({"type": "enabled", "budgetTokens": 32000}));
+            }
+            if let Some(max_in) = mc.and_then(|c| c.get("maxInputTokens")) {
+                obj.insert("maxInputTokens".into(), max_in.clone());
+            }
+            if let Some(max_out) = mc.and_then(|c| c.get("maxOutputTokens")) {
+                obj.insert("maxOutputTokens".into(), max_out.clone());
+            }
+        }
+        m
+    }).collect();
+
+    let default_model = config.selected_model_ids.first().unwrap_or(&config.model);
+
+    if let Some(obj) = claw_config.as_object_mut() {
+        // 清除旧的 custom provider
+        if let Some(models) = obj.get_mut("models").and_then(|v| v.as_object_mut()) {
+            if let Some(providers) = models.get_mut("providers").and_then(|v| v.as_object_mut()) {
+                providers.remove("antigravity");
+                providers.remove("custom-glm");
+            }
+        }
+
+        // 写入新的 provider
+        if !obj.contains_key("models") {
+            obj.insert("models".into(), serde_json::json!({}));
+        }
+        if let Some(models) = obj.get_mut("models").and_then(|v| v.as_object_mut()) {
+            if !models.contains_key("providers") {
+                models.insert("providers".into(), serde_json::json!({}));
+            }
+            if let Some(providers) = models.get_mut("providers").and_then(|v| v.as_object_mut()) {
+                providers.insert("antigravity".into(), serde_json::json!({
+                    "type": "anthropic",
+                    "baseUrl": config.base_url,
+                    "apiKey": config.api_key,
+                    "models": models_list
+                }));
+            }
+            models.insert("mode".into(), serde_json::json!("merge"));
+        }
+
+        // 设置默认 agent
+        if !obj.contains_key("agents") {
+            obj.insert("agents".into(), serde_json::json!({}));
+        }
+        if let Some(agents) = obj.get_mut("agents").and_then(|v| v.as_object_mut()) {
+            if !agents.contains_key("defaults") {
+                agents.insert("defaults".into(), serde_json::json!({}));
+            }
+            if let Some(defaults) = agents.get_mut("defaults").and_then(|v| v.as_object_mut()) {
+                defaults.insert("model".into(), serde_json::json!({"primary": format!("antigravity/{}", default_model)}));
+                defaults.insert("thinking".into(), serde_json::json!({"level": highest}));
+            }
+        }
+    }
+
+    fs::write(&config_path, serde_json::to_string_pretty(&claw_config).unwrap())
+        .map_err(|e| format!("写入失败: {}", e))?;
+
+    Ok(format!("Claw Code: {} 个模型已写入 ~/.openclaw/openclaw.json", config.selected_model_ids.len()))
 }
 
 /// 读取平台配置 — 检测是否已部署我们的 Key
@@ -575,6 +702,7 @@ fn read_platform_config(platform: String) -> Result<Option<serde_json::Value>, S
         "codebuddy" => read_codebuddy_config(),
         "workbuddy" => read_workbuddy_config(),
         "trae" => read_trae_config(),
+        "clawcode" => read_claw_code_config(),
         _ => Ok(None),
     }
 }
@@ -679,16 +807,49 @@ fn read_workbuddy_config() -> Result<Option<serde_json::Value>, String> {
 }
 
 fn read_trae_config() -> Result<Option<serde_json::Value>, String> {
-    let trae_path = detect_trae().path.ok_or("Trae 未安装")?;
-    let config_path = PathBuf::from(&trae_path).join("glm_deploy_config.json");
-    if config_path.exists() {
-        let content = fs::read_to_string(&config_path).map_err(|e| format!("读取失败: {}", e))?;
-        let data: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
-        return Ok(Some(serde_json::json!({
-            "apiKey": data.get("api_key").and_then(|v| v.as_str()).unwrap_or(""),
-            "deployed": true,
-            "platform": "trae",
-        })));
+    let trae_dir = dirs::home_dir().map(|d| d.join(".trae"));
+    if let Some(dir) = trae_dir {
+        let settings = dir.join("settings.json");
+        if settings.exists() {
+            if let Ok(content) = fs::read_to_string(&settings) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let key = data.get("trae.ai.apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                    if key.starts_with("fm-") {
+                        return Ok(Some(serde_json::json!({
+                            "apiKey": key,
+                            "deployed": true,
+                            "platform": "trae",
+                        })));
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn read_claw_code_config() -> Result<Option<serde_json::Value>, String> {
+    let claw_dir = dirs::home_dir().map(|d| d.join(".openclaw"));
+    if let Some(dir) = claw_dir {
+        let config_path = dir.join("openclaw.json");
+        if config_path.exists() {
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(providers) = data.get("models").and_then(|m| m.get("providers")).and_then(|p| p.as_object()) {
+                        for (_, provider) in providers {
+                            let key = provider.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                            if key.starts_with("fm-") {
+                                return Ok(Some(serde_json::json!({
+                                    "apiKey": key,
+                                    "deployed": true,
+                                    "platform": "clawcode",
+                                })));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     Ok(None)
 }
@@ -895,7 +1056,7 @@ fn run_fix(fix_action: String) -> Result<String, String> {
             // 打开下载页面
             #[cfg(target_os = "windows")]
             {
-                let _ = std::process::Command::new("cmd")
+                let _ = std::process::Command::new("cmd").no_window()
                     .args(["/c", "start https://opencode.ai"])
                     .spawn();
             }
@@ -997,7 +1158,7 @@ fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         // 用 PowerShell Start-Process 打开 URL，避免 cmd start 对 & 的截断问题
-        std::process::Command::new("powershell")
+        std::process::Command::new("powershell").no_window()
             .args(["-Command", &format!("Start-Process \"{}\"", url)])
             .spawn()
             .map_err(|e| format!("打开失败: {}", e))?;
@@ -1013,86 +1174,419 @@ fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 清除平台部署配置
+#[tauri::command]
+fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<String, String> {
+    match platform.as_str() {
+        "opencode" => {
+            // 清除 opencode.json 里的 antigravity provider
+            let config_path = dirs::home_dir()
+                .ok_or("无法获取用户目录")?
+                .join(".config/opencode/opencode.json");
+            if config_path.exists() {
+                if let Ok(content) = fs::read_to_string(&config_path) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(provider) = data.get_mut("provider").and_then(|v| v.as_object_mut()) {
+                            provider.remove("antigravity");
+                        }
+                        if let Some(obj) = data.as_object_mut() {
+                            obj.remove("model");
+                        }
+                        fs::write(&config_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| format!("写入失败: {}", e))?;
+                    }
+                }
+            }
+            // 也清除 global.dat 里的 variant
+            let dat_path = dirs::config_dir().map(|d| d.join("ai.opencode.desktop/opencode.global.dat"));
+            if let Some(dp) = dat_path {
+                if dp.exists() {
+                    if let Ok(content) = fs::read_to_string(&dp) {
+                        if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(model_str) = data.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                                if let Ok(mut model_obj) = serde_json::from_str::<serde_json::Value>(&model_str) {
+                                    if let Some(variants) = model_obj.get_mut("variant").and_then(|v| v.as_object_mut()) {
+                                        let keys: Vec<String> = variants.keys().filter(|k| k.starts_with("antigravity:")).cloned().collect();
+                                        for k in keys { variants.remove(&k); }
+                                    }
+                                    data.as_object_mut().map(|o| {
+                                        o.insert("model".into(), serde_json::Value::String(serde_json::to_string(&model_obj).unwrap_or_default()));
+                                    });
+                                    let _ = fs::write(&dp, serde_json::to_string_pretty(&data).unwrap());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok("OpenCode 配置已清除".into())
+        }
+        "claudecode" => {
+            let settings_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".claude/settings.json");
+            if settings_path.exists() {
+                if let Ok(content) = fs::read_to_string(&settings_path) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = data.as_object_mut() {
+                            obj.remove("env");
+                            obj.remove("effortLevel");
+                            obj.remove("thinking");
+                            obj.remove("alwaysThinkingEnabled");
+                        }
+                        fs::write(&settings_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| format!("写入失败: {}", e))?;
+                    }
+                }
+            }
+            Ok("Claude Code 配置已清除".into())
+        }
+        "codebuddy" => {
+            let models_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".codebuddy/models.json");
+            if models_path.exists() {
+                fs::write(&models_path, r#"{"models":[]}"#).map_err(|e| format!("写入失败: {}", e))?;
+            }
+            Ok("CodeBuddy CN 配置已清除".into())
+        }
+        "workbuddy" => {
+            let models_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy/models.json");
+            if models_path.exists() {
+                fs::write(&models_path, "[]").map_err(|e| format!("写入失败: {}", e))?;
+            }
+            Ok("WorkBuddy 配置已清除".into())
+        }
+        "clawcode" => {
+            let config_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".openclaw/openclaw.json");
+            if config_path.exists() {
+                if let Ok(content) = fs::read_to_string(&config_path) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(providers) = data.get_mut("models").and_then(|m| m.get_mut("providers")).and_then(|p| p.as_object_mut()) {
+                            providers.remove("antigravity");
+                            providers.remove("custom-glm");
+                        }
+                        fs::write(&config_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| format!("写入失败: {}", e))?;
+                    }
+                }
+            }
+            Ok("Claw Code 配置已清除".into())
+        }
+        "trae" => {
+            let settings_path = dirs::home_dir().ok_or("无法获取用户目录")?.join(".trae/settings.json");
+            if settings_path.exists() {
+                if let Ok(content) = fs::read_to_string(&settings_path) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = data.as_object_mut() {
+                            obj.remove("trae.ai.apiKey");
+                            obj.remove("trae.ai.baseUrl");
+                            obj.remove("trae.ai.thinking.enabled");
+                            obj.remove("trae.ai.thinking.budgetTokens");
+                            obj.remove("trae.ai.mode");
+                        }
+                        fs::write(&settings_path, serde_json::to_string_pretty(&data).unwrap()).map_err(|e| format!("写入失败: {}", e))?;
+                    }
+                }
+            }
+            Ok("Trae 配置已清除".into())
+        }
+        _ => Err("未知平台".into()),
+    }
+}
+
 /// 重启已部署的软件
 #[tauri::command]
 fn restart_app(platform: String) -> Result<String, String> {
     match platform.as_str() {
         "opencode" => {
-            // OpenCode 是 Electron 应用，通过命令行启动
             #[cfg(target_os = "windows")]
             {
-                let path = dirs::config_dir()
-                    .map(|d| d.join("ai.opencode.desktop"))
-                    .ok_or("找不到 OpenCode 路径")?;
-                // 尝试启动 opencode.exe
-                let exe = path.join("opencode.exe");
-                if exe.exists() {
-                    std::process::Command::new(&exe).spawn()
-                        .map_err(|e| format!("启动失败: {}", e))?;
-                    return Ok("OpenCode 已启动".into());
+                // 先杀掉旧进程再启动
+                let _ = std::process::Command::new("taskkill").no_window()
+                    .args(["/f", "/im", "OpenCode.exe"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // 搜索多个可能的安装路径
+                let candidates: Vec<PathBuf> = vec![
+                    // 注册表发现的路径
+                    dirs::data_dir().map(|d| d.join("Programs/@opencode-aidesktop/OpenCode.exe")),
+                    // 备选路径
+                    dirs::data_dir().map(|d| d.join("Programs/opencode/OpenCode.exe")),
+                    dirs::data_dir().map(|d| d.join("Programs/OpenCode/OpenCode.exe")),
+                ].into_iter().flatten().collect();
+
+                for exe in &candidates {
+                    if exe.exists() {
+                        std::process::Command::new(exe).spawn()
+                            .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("OpenCode 已重启".into());
+                    }
                 }
-                // 也检查 Local AppData
-                let exe2 = dirs::data_dir()
-                    .map(|d| d.join("Programs").join("opencode").join("opencode.exe"));
-                if let Some(e) = exe2 {
-                    if e.exists() {
-                        std::process::Command::new(&e).spawn()
+
+                // 也尝试从开始菜单快捷方式启动
+                let shortcut = dirs::config_dir()
+                    .map(|d| d.join("Microsoft/Windows/Start Menu/Programs/OpenCode.lnk"));
+                if let Some(sc) = shortcut {
+                    if sc.exists() {
+                        std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn()
                             .map_err(|e| format!("启动失败: {}", e))?;
                         return Ok("OpenCode 已启动".into());
                     }
                 }
+
+                // 最后尝试桌面快捷方式
+                if let Some(desktop) = dirs::desktop_dir() {
+                    let sc = desktop.join("OpenCode.lnk");
+                    if sc.exists() {
+                        std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn()
+                            .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("OpenCode 已启动".into());
+                    }
+                }
+
                 Err("未找到 OpenCode 可执行文件，请手动启动".into())
             }
             #[cfg(not(target_os = "windows"))]
-            Err("请在桌面手动启动 OpenCode".into())
+            {
+                // macOS: /Applications/OpenCode.app 或 /opt/homebrew/bin/opencode
+                #[cfg(target_os = "macos")]
+                {
+                    let candidates = vec![
+                        PathBuf::from("/Applications/OpenCode.app"),
+                        PathBuf::from("/Applications/OpenCode.app/Contents/MacOS/OpenCode"),
+                    ];
+                    for exe in &candidates {
+                        if exe.exists() {
+                            std::process::Command::new("open").arg(exe).spawn().map_err(|e| format!("启动失败: {}", e))?;
+                            return Ok("OpenCode 已启动".into());
+                        }
+                    }
+                    Err("未找到 OpenCode，请手动启动".into())
+                }
+                #[cfg(not(target_os = "macos"))]
+                Err("请手动启动 OpenCode".into())
+            }
         }
         "claudecode" => {
             // Claude Code 是命令行工具，不需要重启 GUI
             Ok("Claude Code 配置已生效，新开终端即可使用".into())
         }
         "codebuddy" => {
-            // CodeBuddy 是 VS Code 扩展，重启 VS Code
+            // CodeBuddy CN 独立客户端
             #[cfg(target_os = "windows")]
             {
-                // 尝试重启 VS Code
-                std::process::Command::new("cmd")
-                    .args(["/c", "taskkill /f /im Code.exe & timeout /t 2 & start Code.exe"])
-                    .spawn()
-                    .map_err(|e| format!("重启失败: {}", e))?;
-                Ok("VS Code 正在重启...".into())
+                let _ = std::process::Command::new("taskkill").no_window()
+                    .args(["/f", "/im", "CodeBuddy CN.exe"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // 搜索 exe
+                let candidates: Vec<PathBuf> = vec![
+                    dirs::data_dir().map(|d| d.join("Programs/CodeBuddy CN/CodeBuddy CN.exe")),
+                    dirs::data_dir().map(|d| d.join("Local/Programs/CodeBuddy CN/CodeBuddy CN.exe")),
+                ].into_iter().flatten().collect();
+
+                for exe in &candidates {
+                    if exe.exists() {
+                        std::process::Command::new(exe).spawn()
+                            .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("CodeBuddy CN 已重启".into());
+                    }
+                }
+
+                // 快捷方式
+                let shortcuts = vec![
+                    dirs::desktop_dir().map(|d| d.join("CodeBuddy CN.lnk")),
+                    dirs::config_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs/CodeBuddy CN/CodeBuddy CN.lnk")),
+                ];
+                for sc in shortcuts.iter().flatten() {
+                    if sc.exists() {
+                        let _ = std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn();
+                        return Ok("CodeBuddy CN 已启动".into());
+                    }
+                }
+
+                Err("未找到 CodeBuddy CN 可执行文件，请手动启动".into())
             }
             #[cfg(not(target_os = "windows"))]
-            Err("请手动重启 VS Code".into())
+            {
+                #[cfg(target_os = "macos")]
+                {
+                    let p = PathBuf::from("/Applications/CodeBuddy CN.app");
+                    if p.exists() {
+                        std::process::Command::new("open").arg(&p).spawn().map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("CodeBuddy CN 已启动".into());
+                    }
+                    Err("未找到 CodeBuddy CN，请手动启动".into())
+                }
+                #[cfg(not(target_os = "macos"))]
+                Err("请手动启动 CodeBuddy CN".into())
+            }
         }
         "workbuddy" => {
+            // WorkBuddy 独立客户端
             #[cfg(target_os = "windows")]
             {
-                // 尝试找 WorkBuddy exe
-                let wb_dir = detect_workbuddy().path;
-                if let Some(p) = wb_dir {
-                    let exe = PathBuf::from(&p).join("workbuddy.exe");
+                let _ = std::process::Command::new("taskkill").no_window()
+                    .args(["/f", "/im", "WorkBuddy.exe"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // 搜索 exe
+                let candidates: Vec<PathBuf> = vec![
+                    PathBuf::from("C:\\Program Files\\WorkBuddy\\WorkBuddy.exe"),
+                    PathBuf::from("C:\\Program Files (x86)\\WorkBuddy\\WorkBuddy.exe"),
+                    dirs::data_dir().map(|d| d.join("Programs/WorkBuddy/WorkBuddy.exe")).unwrap_or_default(),
+                ];
+
+                for exe in &candidates {
                     if exe.exists() {
-                        std::process::Command::new(&exe).spawn()
+                        std::process::Command::new(exe).spawn()
                             .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("WorkBuddy 已重启".into());
+                    }
+                }
+
+                // 快捷方式
+                let shortcuts = vec![
+                    dirs::desktop_dir().map(|d| d.join("WorkBuddy.lnk")),
+                    dirs::config_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs/WorkBuddy/WorkBuddy.lnk")),
+                ];
+                for sc in shortcuts.iter().flatten() {
+                    if sc.exists() {
+                        let _ = std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn();
                         return Ok("WorkBuddy 已启动".into());
                     }
                 }
+
                 Err("未找到 WorkBuddy 可执行文件，请手动启动".into())
             }
             #[cfg(not(target_os = "windows"))]
-            Err("请手动启动 WorkBuddy".into())
+            {
+                #[cfg(target_os = "macos")]
+                {
+                    let p = PathBuf::from("/Applications/WorkBuddy.app");
+                    if p.exists() {
+                        std::process::Command::new("open").arg(&p).spawn().map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("WorkBuddy 已启动".into());
+                    }
+                    Err("未找到 WorkBuddy，请手动启动".into())
+                }
+                #[cfg(not(target_os = "macos"))]
+                Err("请手动启动 WorkBuddy".into())
+            }
         }
         "trae" => {
             #[cfg(target_os = "windows")]
             {
-                std::process::Command::new("cmd")
-                    .args(["/c", "taskkill /f /im Trae.exe & timeout /t 2 & start Trae.exe"])
-                    .spawn()
-                    .map_err(|e| format!("重启失败: {}", e))?;
-                Ok("Trae 正在重启...".into())
+                let _ = std::process::Command::new("taskkill").no_window()
+                    .args(["/f", "/im", "Trae.exe"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // 搜索 Trae exe
+                let candidates: Vec<PathBuf> = vec![
+                    dirs::data_dir().map(|d| d.join("Programs/Trae/Trae.exe")).unwrap_or_default(),
+                    dirs::data_dir().map(|d| d.join("Local/Programs/Trae/Trae.exe")).unwrap_or_default(),
+                    PathBuf::from("C:\\Program Files\\Trae\\Trae.exe"),
+                ];
+
+                for exe in &candidates {
+                    if exe.exists() {
+                        std::process::Command::new(exe).spawn()
+                            .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("Trae 已重启".into());
+                    }
+                }
+
+                // 快捷方式
+                let shortcuts = vec![
+                    dirs::desktop_dir().map(|d| d.join("Trae.lnk")),
+                    dirs::config_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs/Trae.lnk")),
+                ];
+                for sc in shortcuts.iter().flatten() {
+                    if sc.exists() {
+                        let _ = std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn();
+                        return Ok("Trae 已启动".into());
+                    }
+                }
+
+                Err("未找到 Trae 可执行文件，请手动启动".into())
             }
             #[cfg(not(target_os = "windows"))]
-            Err("请手动重启 Trae".into())
+            {
+                #[cfg(target_os = "macos")]
+                {
+                    let p = PathBuf::from("/Applications/Trae.app");
+                    if p.exists() {
+                        std::process::Command::new("open").arg(&p).spawn().map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("Trae 已启动".into());
+                    }
+                    Err("未找到 Trae，请手动启动".into())
+                }
+                #[cfg(not(target_os = "macos"))]
+                Err("请手动重启 Trae".into())
+            }
+        }
+        "clawcode" => {
+            // QClaw/Claw Code — GUI 应用
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("taskkill").no_window()
+                    .args(["/f", "/im", "QClaw.exe"])
+                    .spawn();
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // 搜索 exe
+                if let Some(d) = dirs::data_dir() {
+                    let exe = d.join("Programs/QClaw/QClaw.exe");
+                    if exe.exists() {
+                        std::process::Command::new(&exe).spawn()
+                            .map_err(|e| format!("启动失败: {}", e))?;
+                        return Ok("Claw Code 已重启".into());
+                    }
+                }
+
+                // 快捷方式
+                let shortcuts = vec![
+                    dirs::desktop_dir().map(|d| d.join("QClaw.lnk")),
+                    dirs::config_dir().map(|d| d.join("Microsoft/Windows/Start Menu/Programs/QClaw.lnk")),
+                ];
+                for sc in shortcuts.iter().flatten() {
+                    if sc.exists() {
+                        let _ = std::process::Command::new("cmd").no_window()
+                            .args(["/c", "start", "", &sc.to_string_lossy()])
+                            .spawn();
+                        return Ok("Claw Code 已启动".into());
+                    }
+                }
+
+                Err("未找到 Claw Code 可执行文件，请手动启动".into())
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                #[cfg(target_os = "macos")]
+                {
+                    let candidates = vec![
+                        PathBuf::from("/Applications/QClaw.app"),
+                        PathBuf::from("/Applications/OpenClaw.app"),
+                    ];
+                    for exe in &candidates {
+                        if exe.exists() {
+                            std::process::Command::new("open").arg(exe).spawn().map_err(|e| format!("启动失败: {}", e))?;
+                            return Ok("Claw Code 已启动".into());
+                        }
+                    }
+                    Err("未找到 Claw Code，请手动启动".into())
+                }
+                #[cfg(not(target_os = "macos"))]
+                Err("请手动重启 Claw Code".into())
+            }
         }
         _ => Err("未知平台".into()),
     }
@@ -1300,6 +1794,7 @@ pub fn run() {
             test_api_call,
             lookup_error,
             open_url,
+            clear_platform_deploy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@
         <span v-if="balance!==null" class="bal">{{balance}}</span>
         <button @click="showRecharge=true">充值</button>
         <button @click="showDiag=true">自检</button>
+        <button @click="showClear=true">清除部署</button>
         <button class="pri" @click="$emit('deploy')">部署</button>
         <button class="danger" @click="$emit('logout')">退出</button>
       </div>
@@ -64,25 +65,38 @@
         <div class="mini-promo" @click="openShop">好评送500积分！5图好评+联系客服→免费领卡密</div>
         <input v-model="rechargeCard" class="big-input" placeholder="输入卡号 (5200-XXXX...)" />
         <button class="big-btn" @click="doRecharge" :disabled="recharging">{{recharging?'充值中...':'确认充值'}}</button>
-        <button class="buy-btn" @click="openShop">电脑端购买</button>
-        <button class="buy-btn qr-trigger" @click="showQR=true">手机扫码购买</button>
+        <button class="buy-btn" @click="openShop">购买卡号</button>
         <button class="cancel-btn" @click="showRecharge=false">取消</button>
-      </div>
-    </div>
-
-    <!-- 二维码弹窗 -->
-    <div v-if="showQR" class="modal-bg" style="z-index:99999" @click.self="showQR=false">
-      <div class="qr-box" @click.stop>
-        <h3>手机扫码购买</h3>
-        <img src="/qr-taobao.png" alt="二维码" class="qr-img" />
-        <p class="qr-tip">用手机淘宝/支付宝扫码打开</p>
-        <p class="qr-link" @click="openShop">或点此在浏览器打开</p>
-        <button class="cancel-btn" @click="showQR=false">关闭</button>
       </div>
     </div>
 
     <!-- 自检弹窗 -->
     <Diagnostics v-if="showDiag" @close="showDiag=false" />
+
+    <!-- 清除部署弹窗 -->
+    <div v-if="showClear" class="modal-bg" style="z-index:9998" @click.self="showClear=false">
+      <div class="modal-box" style="width:380px" @click.stop>
+        <h3>清除部署配置</h3>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">选择要清除的平台配置：</p>
+        <div v-for="(p,key) in clearPlatforms" :key="key" class="clear-row">
+          <label>
+            <input type="checkbox" v-model="clearPlatforms[key]" />
+            {{ platformLabels[key] }}
+          </label>
+        </div>
+        <div style="margin-top:12px">
+          <label style="font-size:12px;color:#888">推理等级:</label>
+          <select v-model="clearReasoning" class="big-input" style="height:32px;font-size:12px">
+            <option value="">全部清除</option>
+            <option value="max">仅 max</option>
+            <option value="high">仅 high</option>
+            <option value="medium">仅 medium</option>
+          </select>
+        </div>
+        <button class="big-btn" style="background:#ff4d4f" @click="doClearDeploy" :disabled="clearing">{{clearing?'清除中...':'确认清除'}}</button>
+        <button class="cancel-btn" @click="showClear=false">取消</button>
+      </div>
+    </div>
 
     <!-- Toast -->
     <transition name="fade">
@@ -106,8 +120,13 @@ const models = ref([]);
 const showRecharge = ref(false);
 const showDiag = ref(false);
 const showQR = ref(false);
+const showClear = ref(false);
 const rechargeCard = ref("");
 const recharging = ref(false);
+const clearing = ref(false);
+const clearPlatforms = reactive({ opencode:false, claudecode:false, codebuddy:false, workbuddy:false, clawcode:false, trae:false });
+const clearReasoning = ref("");
+const platformLabels = { opencode:"OpenCode", claudecode:"Claude Code", codebuddy:"CodeBuddy CN", workbuddy:"WorkBuddy", clawcode:"Claw Code", trae:"Trae" };
 const toast = reactive({ show:false, msg:"", type:"info" });
 
 const baseUrl = computed(() => "https://" + props.serverPlatform + ".2bbb.cn/v1");
@@ -162,6 +181,29 @@ async function doRecharge() {
 }
 
 onMounted(loadData);
+
+async function doClearDeploy() {
+  const selected = Object.keys(clearPlatforms).filter(k => clearPlatforms[k]);
+  if (!selected.length) { showToast("请选择要清除的平台", "error"); return; }
+  clearing.value = true;
+  try {
+    if (window.__TAURI_INTERNALS__) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      for (const p of selected) {
+        try {
+          await invoke("clear_platform_deploy", { platform: p, reasoningLevel: clearReasoning.value });
+        } catch(e) { console.error(p, e); }
+      }
+      showToast(selected.length + " 个平台配置已清除，请重启对应软件", "success");
+      showClear.value = false;
+      // 重置选择
+      Object.keys(clearPlatforms).forEach(k => clearPlatforms[k] = false);
+    } else {
+      showToast("请在桌面客户端中清除", "error");
+    }
+  } catch(e) { showToast("清除失败: " + e.message, "error"); }
+  finally { clearing.value = false; }
+}
 </script>
 
 <style scoped>
@@ -241,4 +283,9 @@ onMounted(loadData);
 .fade-enter-from, .fade-leave-to { opacity:0; }
 
 pre { user-select:text; -webkit-user-select:text; }
+
+/* 清除部署 */
+.clear-row { padding:6px 0; font-size:13px; }
+.clear-row label { cursor:pointer; display:flex; align-items:center; gap:6px; }
+.clear-row input { width:16px; height:16px; }
 </style>

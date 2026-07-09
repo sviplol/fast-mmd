@@ -44,6 +44,13 @@ export const PLATFORMS = {
     color: "#00D9B2",
     url: "https://trae.cn",
   },
+  clawcode: {
+    name: "Claw Code",
+    icon: "🦞",
+    desc: "QClaw 编程助手",
+    color: "#FA541C",
+    url: "https://qclaw.cn",
+  },
 };
 
 export const REASONING_LEVELS = [
