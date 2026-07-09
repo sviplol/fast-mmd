@@ -117,7 +117,11 @@ def move_file_to_folder(file_id, folder_id, ylogin, phpdisk_info):
 
 
 def upload_file(filepath, ylogin, phpdisk_info):
-    """Upload a single file to Lanzou Cloud root, return file_id or None."""
+    """Upload a single file to Lanzou Cloud root, return numeric file_id or None.
+
+    Lanzou's html5up.php returns both 'id' (numeric, used for move/delete)
+    and 'f_id' (string hash, used for share links). We need the numeric id.
+    """
     filename = os.path.basename(filepath)
     filesize = os.path.getsize(filepath)
     print(f"  Uploading {filename} ({filesize} bytes)")
@@ -170,9 +174,13 @@ def upload_file(filepath, ylogin, phpdisk_info):
         result = json.loads(resp_body)
         if result.get("zt") == 1:
             text_list = result.get("text", [{}])
-            file_id = text_list[0].get("f_id", "") if text_list else ""
-            print(f"  Upload OK, file_id={file_id}")
-            return file_id
+            if text_list:
+                # 'id' is the numeric file id used for move/delete API calls
+                file_id = text_list[0].get("id", "")
+                f_id = text_list[0].get("f_id", "")
+                print(f"  Upload OK, id={file_id} f_id={f_id}")
+                return file_id
+            return None
         else:
             print(f"  Upload failed: {result.get('info', 'unknown')}")
             return None
