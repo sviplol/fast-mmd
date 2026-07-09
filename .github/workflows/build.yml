@@ -13,7 +13,9 @@ jobs:
           - platform: windows-latest
             args: ""
           - platform: macos-latest
-            args: ""
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-13
+            args: "--target x86_64-apple-darwin"
     
     runs-on: ${{ matrix.platform }}
     steps:
@@ -26,6 +28,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || matrix.platform == 'macos-13' && 'x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -36,7 +40,7 @@ jobs:
         run: npm install
 
       - name: Build Tauri app
-        run: npx tauri build
+        run: npx tauri build ${{ matrix.args }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -44,5 +48,7 @@ jobs:
           name: Fast-MMD-${{ matrix.platform }}
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/*/release/bundle/dmg/*.dmg
+            src-tauri/target/*/release/bundle/app/*.app
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/app/*.app
