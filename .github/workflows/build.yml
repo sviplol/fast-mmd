@@ -24,10 +24,12 @@ jobs:
             args: "--target aarch64-apple-darwin"
             artifact_name: "Fast-MMD-Mac-ARM.dmg"
             artifact_glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
-          - platform: macos-13
+            rust_target: "aarch64-apple-darwin"
+          - platform: macos-latest
             args: "--target x86_64-apple-darwin"
             artifact_name: "Fast-MMD-Mac-Intel.dmg"
             artifact_glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
+            rust_target: "x86_64-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -41,7 +43,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || matrix.platform == 'macos-13' && 'x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
