@@ -412,7 +412,10 @@ fn deploy_claude_code(config: &DeployConfig) -> Result<String, String> {
 }
 
 /// CodeBuddy CN 部署: 写入 ~/.codebuddy/models.json
-/// 格式: {"models": [{id, name, vendor, url, apiKey, supportsToolCall, supportsImages, supportsReasoning, ...}]}
+/// 格式（实际能用的）:
+/// {"models": [{id, name, vendor:"user", url, apiKey, supportsToolCall:true, supportsImages:true,
+///   supportsReasoning:true, onlyReasoning:true, reasoning:{effort:"max",summary:"auto",available:["max"]},
+///   maxInputTokens, maxOutputTokens, deepThinking:true}]}
 fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
     let cb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".codebuddy");
     if !cb_dir.exists() {
@@ -421,75 +424,50 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 
     let models_path = cb_dir.join("models.json");
 
-    // CodeBuddy 格式: {"models": [...]}
-    let mut existing: serde_json::Value = if models_path.exists() {
-        fs::read_to_string(&models_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(serde_json::json!({"models": []}))
-    } else {
-        serde_json::json!({"models": []})
-    };
-
-    // CodeBuddy 的 url 必须带 /v1 后缀
-    let cb_base_url = if config.base_url.ends_with("/v1") {
+    // CodeBuddy 用 url 字段，必须带 /v1 后缀
+    let cb_url = if config.base_url.ends_with("/v1") {
         config.base_url.clone()
     } else {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // 构建新模型 — CodeBuddy 格式: url (不是 baseUrl), vendor
+    // 所有模型统一格式 — 跟 CodeBuddy 实际能用的配置完全一致
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
-        // 找到对应的 model_config
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
 
-        let mut m = serde_json::json!({
+        serde_json::json!({
             "id": mid,
-            "name": mc.and_then(|c| c.get("name")).cloned().unwrap_or(serde_json::json!(mid)),
+            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
             "vendor": "user",
-            "url": cb_base_url,
+            "url": cb_url,
             "apiKey": config.api_key,
-            "supportsToolCall": mc.and_then(|c| c.get("supportsToolCall")).cloned().unwrap_or(serde_json::json!(true)),
+            "supportsToolCall": true,
             "supportsImages": true,
-            "supportsReasoning": mc.and_then(|c| c.get("supportsReasoning")).cloned().unwrap_or(serde_json::json!(true)),
-        });
-
-        // 加推理配置
-        if let Some(obj) = m.as_object_mut() {
-            if let Some(reasoning) = mc.and_then(|c| c.get("reasoning")) {
-                obj.insert("reasoning".into(), reasoning.clone());
-            }
-            if let Some(max_in) = mc.and_then(|c| c.get("maxInputTokens")) {
-                obj.insert("maxInputTokens".into(), max_in.clone());
-            }
-            if let Some(max_out) = mc.and_then(|c| c.get("maxOutputTokens")) {
-                obj.insert("maxOutputTokens".into(), max_out.clone());
-            }
-        }
-
-        m
+            "supportsReasoning": true,
+            "onlyReasoning": true,
+            "reasoning": {
+                "effort": "max",
+                "summary": "auto",
+                "available": ["max"]
+            },
+            "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
+            "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(64000),
+            "deepThinking": true
+        })
     }).collect();
 
-    // 清除所有旧的（不管是 fm- 还是 sk- 还是其他）
-    if let Some(arr) = existing.get_mut("models").and_then(|v| v.as_array_mut()) {
-        arr.clear();
-        for new_m in &new_models {
-            arr.push(new_m.clone());
-        }
-    } else {
-        existing = serde_json::json!({"models": new_models});
-    }
-
-    fs::write(&models_path, serde_json::to_string_pretty(&existing).unwrap())
+    let out = serde_json::json!({"models": new_models});
+    fs::write(&models_path, serde_json::to_string_pretty(&out).unwrap())
         .map_err(|e| format!("写入失败: {}", e))?;
 
     Ok(format!("CodeBuddy CN: {} 个模型已写入 ~/.codebuddy/models.json", config.selected_model_ids.len()))
 }
 
 /// WorkBuddy 部署: 写入 ~/.workbuddy/models.json
-/// 格式: 裸数组，所有模型统一 supportsReasoning=true/onlyReasoning=true/deepThinking=true
-/// （参考 CodeBuddy 正常工作的配置，不能按模型区分，否则 WorkBuddy 响应解析崩溃导致重登）
+/// 格式（用户手动配置验证可用）:
+/// [{id, name, vendor:"Custom", url, apiKey, supportsToolCall, supportsImages, supportsReasoning, useCustomProtocol:false, reasoning:{supportedEfforts:["max"]}}]
 fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
     if !wb_dir.exists() {
@@ -504,18 +482,14 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let _ = fs::copy(&models_path, &bak);
     }
 
-    // WorkBuddy 的 baseUrl 必须带 /v1 后缀
-    let wb_base_url = if config.base_url.ends_with("/v1") {
+    // WorkBuddy 用 url 字段，必须带 /v1 后缀
+    let wb_url = if config.base_url.ends_with("/v1") {
         config.base_url.clone()
     } else {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // 推理等级 — 全部用 max（跟 CodeBuddy 正常配置一致）
-    let effort = "max";
-    let levels = vec!["max".to_string()];
-
-    // 所有模型统一格式 — 参考 CodeBuddy 正常工作的配置
+    // 所有模型统一格式 — 严格按 WorkBuddy 界面手动添加验证可用的格式
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
@@ -524,22 +498,16 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({
             "id": mid,
             "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
+            "vendor": "Custom",
+            "url": wb_url,
             "apiKey": config.api_key,
-            "baseUrl": wb_base_url,
-            "supportsReasoning": true,
-            "onlyReasoning": true,
-            "reasoning": {
-                "effort": effort,
-                "summary": "auto",
-                "available": levels
-            },
-            "reasoningLevels": levels,
-            "deepThinking": true,
             "supportsToolCall": true,
             "supportsImages": true,
-            "maxAllowedSize": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
-            "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
-            "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(64000)
+            "supportsReasoning": true,
+            "useCustomProtocol": false,
+            "reasoning": {
+                "supportedEfforts": ["max"]
+            }
         })
     }).collect();
 
@@ -808,11 +776,11 @@ fn read_workbuddy_config() -> Result<Option<serde_json::Value>, String> {
     if let Some(arr) = models.as_array() {
         for m in arr {
             let api_key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-            let base_url = m.get("baseUrl").and_then(|v| v.as_str()).unwrap_or("");
-            if api_key.starts_with("fm-") || base_url.contains("2bbb.cn") {
+            let url = m.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            if api_key.starts_with("fm-") || url.contains("2bbb.cn") {
                 return Ok(Some(serde_json::json!({
                     "apiKey": api_key,
-                    "baseUrl": base_url,
+                    "baseUrl": url,
                     "deployed": true,
                     "platform": "workbuddy",
                 })));
@@ -1047,7 +1015,34 @@ fn check_codebuddy_config() -> DiagnosticItem {
     if !cb.installed {
         return DiagnosticItem { id: "cb_not_installed".into(), category: "CodeBuddy".into(), title: "CodeBuddy 未安装".into(), status: "warning".into(), detail: "".into(), fixable: false, fix_action: "".into() };
     }
-    DiagnosticItem { id: "cb_installed".into(), category: "CodeBuddy".into(), title: "已安装（需手动导入配置）".into(), status: "ok".into(), detail: "CodeBuddy 使用 DPAPI 加密，需手动导入 glm_deploy_config.json".into(), fixable: false, fix_action: "".into() }
+    let path = match cb.path {
+        Some(p) => p,
+        None => return DiagnosticItem { id: "cb_no_path".into(), category: "CodeBuddy".into(), title: "未找到配置路径".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() },
+    };
+    let models = PathBuf::from(path).join("models.json");
+    if !models.exists() {
+        return DiagnosticItem { id: "cb_no_config".into(), category: "CodeBuddy".into(), title: "models.json 不存在".into(), status: "warning".into(), detail: "请先部署".into(), fixable: true, fix_action: "deploy".into() };
+    }
+    match fs::read_to_string(&models) {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(data) => {
+                    if let Some(arr) = data.get("models").and_then(|v| v.as_array()) {
+                        for m in arr {
+                            let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
+                            if key.starts_with("fm-") {
+                                let preview = if key.len() > 10 { format!("{}...", &key[..10]) } else { format!("{}...", key) };
+                                return DiagnosticItem { id: "cb_ok".into(), category: "CodeBuddy".into(), title: "配置正常".into(), status: "ok".into(), detail: format!("Key: {}", preview), fixable: false, fix_action: "".into() };
+                            }
+                        }
+                    }
+                    DiagnosticItem { id: "cb_no_deploy".into(), category: "CodeBuddy".into(), title: "未部署我们的 API".into(), status: "warning".into(), detail: "models.json 中未找到 fm- 开头的 Key".into(), fixable: true, fix_action: "deploy".into() }
+                }
+                Err(e) => DiagnosticItem { id: "cb_parse_error".into(), category: "CodeBuddy".into(), title: "models.json 损坏".into(), status: "error".into(), detail: format!("{}", e), fixable: true, fix_action: "restore_backup".into() }
+            }
+        }
+        Err(e) => DiagnosticItem { id: "cb_read_error".into(), category: "CodeBuddy".into(), title: "读取失败".into(), status: "error".into(), detail: format!("{}", e), fixable: false, fix_action: "".into() }
+    }
 }
 
 fn check_trae_config() -> DiagnosticItem {
