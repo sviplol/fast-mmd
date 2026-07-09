@@ -488,7 +488,8 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 }
 
 /// WorkBuddy 部署: 写入 ~/.workbuddy/models.json
-/// 格式: 裸数组 [{id, name, apiKey, baseUrl, deepThinking, reasoningLevels, reasoning, ...}]
+/// 格式: 裸数组，所有模型统一 supportsReasoning=true/onlyReasoning=true/deepThinking=true
+/// （参考 CodeBuddy 正常工作的配置，不能按模型区分，否则 WorkBuddy 响应解析崩溃导致重登）
 fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
     if !wb_dir.exists() {
@@ -510,62 +511,42 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // 推理等级列表（传给 WorkBuddy，控制模型可选的推理等级）
-    let levels: Vec<String> = if config.reasoning_levels.is_empty() {
-        vec![config.reasoning_level.clone()]
-    } else {
-        config.reasoning_levels.clone()
-    };
+    // 推理等级 — 全部用 max（跟 CodeBuddy 正常配置一致）
+    let effort = "max";
+    let levels = vec!["max".to_string()];
 
-    // 构建模型列表 — 严格按 WorkBuddy 实际格式（含 deepThinking + reasoningLevels）
+    // 所有模型统一格式 — 参考 CodeBuddy 正常工作的配置
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
 
-        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let model_levels: Vec<String> = if supports_reasoning {
-            levels.clone()
-        } else {
-            vec!["none".to_string()]
-        };
-
-        let mut m = serde_json::json!({
+        serde_json::json!({
             "id": mid,
             "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
             "apiKey": config.api_key,
             "baseUrl": wb_base_url,
-            "supportsReasoning": supports_reasoning,
-            "onlyReasoning": supports_reasoning,
+            "supportsReasoning": true,
+            "onlyReasoning": true,
             "reasoning": {
-                "effort": config.reasoning_level,
-                "summary": "auto"
+                "effort": effort,
+                "summary": "auto",
+                "available": levels
             },
-            "reasoningLevels": model_levels,
-            "deepThinking": config.deep_thinking && supports_reasoning,
-            "supportsToolCall": mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true),
+            "reasoningLevels": levels,
+            "deepThinking": true,
+            "supportsToolCall": true,
             "supportsImages": true,
             "maxAllowedSize": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(200000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(64000)
-        });
-
-        // 非 none 等级加上 reasoning.available
-        if supports_reasoning && levels.iter().any(|l| l != "none") {
-            if let Some(obj) = m.as_object_mut() {
-                if let Some(reasoning) = obj.get_mut("reasoning").and_then(|v| v.as_object_mut()) {
-                    reasoning.insert("available".into(), serde_json::json!(levels));
-                }
-            }
-        }
-
-        m
+        })
     }).collect();
 
     let models_json = serde_json::to_string_pretty(&serde_json::Value::Array(new_models)).unwrap();
     fs::write(&models_path, models_json).map_err(|e| format!("写入失败: {}", e))?;
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 ~/.workbuddy/models.json (含 deepThinking + reasoningLevels)", config.selected_model_ids.len()))
+    Ok(format!("WorkBuddy: {} 个模型已写入 ~/.workbuddy/models.json", config.selected_model_ids.len()))
 }
 
 /// Trae 部署: 写入 ~/.trae/settings.json

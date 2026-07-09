@@ -219,8 +219,13 @@ async function detectPlatforms() {
       // Web 模式 — 不模拟，全部未安装
       installed.value = {};
     }
-    for (const key of Object.keys(PLATFORMS)) {
-      if (installed.value[key]?.installed) { selectedPlatforms.value = [key]; break; }
+    // 默认只勾选 WorkBuddy（如果已安装），否则选第一个已安装的
+    if (installed.value["workbuddy"]?.installed) {
+      selectedPlatforms.value = ["workbuddy"];
+    } else {
+      for (const key of Object.keys(PLATFORMS)) {
+        if (installed.value[key]?.installed) { selectedPlatforms.value = [key]; break; }
+      }
     }
     detectDone.value = true;
   } catch(e) { showToast("检测失败: " + e.message, "error"); }
