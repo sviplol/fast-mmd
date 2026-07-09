@@ -481,7 +481,10 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
     }
 
-    // 找到当前版本对应的 entry 文件 (匹配 genieVersion 或取最新日期)
+    // 关键: 部署前必须先关闭 WorkBuddy, 否则 WorkBuddy 退出时会把内存状态覆盖回 entry 文件
+    kill_workbuddy_processes();
+
+    // 找到当前版本对应的 entry 文件 (取日期最新的)
     let target_entry = find_workbuddy_entry(&ls_dir)?;
     let entry_path = ls_dir.join(&target_entry);
 
@@ -510,16 +513,14 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         });
     }
 
-    // 添加新的 custom-local: 模型 — 严格按 WorkBuddy UI 手动添加的格式
+    // 添加新的 custom-local: 模型
+    // 严格按 WorkBuddy UI 手动添加验证可用的格式 (无 reasoning 字段, 无 maxInputTokens 等额外字段)
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
 
         let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let deep_thinking = mc.and_then(|c| c.get("deepThinking")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let max_in = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
-        let max_out = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(16000);
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
 
         serde_json::json!({
@@ -533,9 +534,6 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
             "useCustomProtocol": false,
-            "reasoning": {
-                "supportedEfforts": ["max"]
-            },
             "aliases": [mid],
             "tags": ["custom"]
         })
@@ -556,9 +554,30 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     Ok(format!("WorkBuddy: {} 个模型已写入 {} (entry_*.info)", config.selected_model_ids.len(), target_entry))
 }
 
+/// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
+fn kill_workbuddy_processes() {
+    #[cfg(target_os = "windows")]
+    {
+        // 用 taskkill 无窗口方式关闭, CREATE_NO_WINDOW 防止黑框
+        let _ = std::process::Command::new("taskkill")
+            .args(&["/F", "/IM", "WorkBuddy.exe"])
+            .no_window()
+            .output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(&["-f", "WorkBuddy"])
+            .output();
+    }
+    // 等待进程完全退出和文件句柄释放
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+}
+
 /// 在 local_storage 目录中找到当前 WorkBuddy 版本对应的 entry_*.info 文件
+/// 策略: 取 date 字段最新的 (即当前版本)
 fn find_workbuddy_entry(ls_dir: &Path) -> Result<String, String> {
-    let mut entries: Vec<(String, String, String)> = Vec::new(); // (filename, version, date)
+    let mut entries: Vec<(String, String)> = Vec::new(); // (filename, date)
 
     for entry in fs::read_dir(ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
         let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
@@ -566,14 +585,13 @@ fn find_workbuddy_entry(ls_dir: &Path) -> Result<String, String> {
         if !name.starts_with("entry_") || !name.ends_with(".info") {
             continue;
         }
-        // 尝试解压读取版本
+        // 尝试解压读取日期
         if let Ok(raw) = fs::read(entry.path()) {
             if let Ok(json_str) = decode_entry_info(&raw) {
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    let ver = data.get("genieVersion").and_then(|v| v.as_str()).unwrap_or("").to_string();
                     let date = data.get("date").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    if !ver.is_empty() {
-                        entries.push((name, ver, date));
+                    if !date.is_empty() {
+                        entries.push((name, date));
                     }
                 }
             }
@@ -584,43 +602,9 @@ fn find_workbuddy_entry(ls_dir: &Path) -> Result<String, String> {
         return Err("未找到有效的 entry_*.info 文件, 请先启动 WorkBuddy".into());
     }
 
-    // 优先匹配 WorkBuddy.exe 的版本, 找不到则取日期最新的
-    let wb_ver = detect_workbuddy_version();
-    if let Some(ref ver) = wb_ver {
-        for (name, ev, _) in &entries {
-            if ver.starts_with(ev) || ev == ver.trim_end_matches(".0") {
-                return Ok(name.clone());
-            }
-        }
-    }
-
     // 取日期最新的
-    entries.sort_by(|a, b| b.2.cmp(&a.2));
+    entries.sort_by(|a, b| b.1.cmp(&a.1));
     Ok(entries[0].0.clone())
-}
-
-/// 获取 WorkBuddy.exe 版本号
-fn detect_workbuddy_version() -> Option<String> {
-    let candidates = [
-        r"C:\Program Files\WorkBuddy\WorkBuddy.exe",
-        r"C:\Program Files (x86)\WorkBuddy\WorkBuddy.exe",
-    ];
-    for p in &candidates {
-        if std::path::Path::new(p).exists() {
-            // 用 PowerShell 读取版本
-            let output = std::process::Command::new("powershell")
-                .args(&["-NoProfile", "-Command",
-                    &format!("(Get-Item '{}').VersionInfo.ProductVersion", p)])
-                .output().ok()?;
-            if output.status.success() {
-                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !ver.is_empty() {
-                    return Some(ver);
-                }
-            }
-        }
-    }
-    None
 }
 
 /// 解码 entry_*.info: 去引号 -> base64 解码 -> gzip 解压
@@ -1451,6 +1435,8 @@ fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<St
             Ok("CodeBuddy CN 配置已清除".into())
         }
         "workbuddy" => {
+            // 关闭 WorkBuddy 避免覆盖
+            kill_workbuddy_processes();
             // 从 entry_*.info 中移除我们的 custom-local: 模型
             let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
             let ls_dir = wb_dir.join("local_storage");
@@ -1467,9 +1453,7 @@ fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<St
                                     let before = models.len();
                                     models.retain(|m| {
                                         let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                        let key = m.get("apiKey").and_then(|v| v.as_str()).unwrap_or("");
-                                        let url = m.get("url").and_then(|v| v.as_str()).or_else(|| m.get("baseUrl").and_then(|v| v.as_str())).unwrap_or("");
-                                        !(id.starts_with("custom-local:") && (url.contains("2bbb.cn") || key.starts_with("fm-")))
+                                        !id.starts_with("custom-local:")
                                     });
                                     if models.len() != before { changed = true; }
                                 }
