@@ -17,7 +17,7 @@
     <div class="mcontent">
       <div v-if="tab==='overview'">
         <div class="stats">
-          <div class="stat"><span>余额</span><b style="color:#52c41a">{{balance||0}}</b></div>
+          <div class="stat"><span>余额</span><b style="color:#52c41a">{{(balance||0).toFixed(2)}}</b></div>
           <div class="stat"><span>请求</span><b>{{usage.total_requests||0}}</b></div>
           <div class="stat"><span>消耗</span><b style="color:#ff4d4f">{{(usage.used||0).toFixed(2)}}</b></div>
           <div class="stat"><span>剩余</span><b style="color:#2f54eb">{{remaining.toFixed(0)}}</b></div>
@@ -53,7 +53,7 @@
       <div v-if="tab==='models'">
         <div v-if="!models.length" class="empty">加载中...</div>
         <div v-else class="model-tags">
-          <span v-for="m in models" :key="m.id" class="model-tag">{{m.id}}</span>
+          <span v-for="m in models" :key="m.id" class="model-tag" @click="copy(m.id)" style="cursor:pointer">{{m.id}}</span>
         </div>
       </div>
     </div>

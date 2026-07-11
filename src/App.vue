@@ -75,7 +75,7 @@
       <div class="ready-card">
         <div class="success-icon">✅</div>
         <h1>{{ readyTitle }}</h1>
-        <p class="balance-text">余额: <b>{{ balance }}</b> {{ platform==='tk' ? 'token' : '积分' }}</p>
+        <p class="balance-text">余额: <b>{{ balance.toFixed(2) }}</b> {{ platform==='tk' ? 'token' : '积分' }}</p>
         <button class="deploy-btn" @click="stage='wizard'">🚀 一键部署</button>
         <button class="skip-btn" @click="confirmSkip">跳过，直接进入</button>
       </div>
@@ -109,7 +109,7 @@
             <button class="copy-mini" @click="copyText(queryResult.apiKey)">📋</button>
           </div>
           <div v-if="queryResult.balance !== null && queryResult.balance !== undefined" class="query-balance">
-            剩余: <b>{{ queryResult.balance }}</b> {{ platform==='tk' ? 'token' : '积分' }}
+            剩余: <b>{{ Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'token' : '积分' }}
           </div>
         </div>
 
