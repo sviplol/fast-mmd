@@ -13,13 +13,16 @@
         <div class="step-line" :class="{done:step>1}"></div>
         <div class="step-dot" :class="{active:step>=2,done:step>2}">3</div>
         <div class="step-line" :class="{done:step>2}"></div>
-        <div class="step-dot" :class="{active:step>=3}">4</div>
+        <div class="step-dot" :class="{active:step>=3,done:step>3}">4</div>
+        <div class="step-line" :class="{done:step>3}"></div>
+        <div class="step-dot" :class="{active:step>=4}">5</div>
       </div>
       <div class="step-labels">
         <span :class="{active:step===0}">检测平台</span>
         <span :class="{active:step===1}">选模型</span>
         <span :class="{active:step===2}">推理配置</span>
-        <span :class="{active:step===3}">确认部署</span>
+        <span :class="{active:step===3}">默认模型</span>
+        <span :class="{active:step===4}">确认部署</span>
       </div>
 
       <!-- Step 0: 检测平台 -->
@@ -84,11 +87,29 @@
         </div>
       </div>
 
-      <!-- Step 3: 确认 -->
+      <!-- Step 3: 选默认模型 (单选) -->
       <div v-if="step===3" class="step-content">
+        <div class="default-model-hint">
+          选择部署后客户端默认使用的模型<br>
+          <span style="color:#999;font-size:11px">部署完成后可随时在各平台自定义模型中切换其他模型</span>
+        </div>
+        <div class="model-scroll">
+          <div v-for="m in selectedModelObjs" :key="m.id" class="model-row"
+            :class="{sel:defaultModel===m.id}" @click="defaultModel=m.id">
+            <span class="mcheck">{{ defaultModel===m.id ? '🔵' : '⚪' }}</span>
+            <span class="mname">{{ m.name }}</span>
+            <span class="mdesc">{{ m.desc }}</span>
+            <span v-if="m.recommended" class="mtag r">推荐</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: 确认 -->
+      <div v-if="step===4" class="step-content">
         <div class="confirm-box">
           <div class="confirm-row"><span>平台</span><b>{{ selectedPlatforms.map(p=>PLATFORMS[p].name).join(', ') }}</b></div>
           <div class="confirm-row"><span>模型数</span><b>{{ selectedModels.length }} 个</b></div>
+          <div class="confirm-row"><span>默认模型</span><b>{{ ALL_MODELS.find(m=>m.id===defaultModel)?.name || defaultModel }}</b></div>
           <div class="confirm-row"><span>推理等级</span><b>{{ getLevel()?.label }} ({{ getLevel()?.cost }})</b></div>
           <div class="confirm-row"><span>深度思考</span><b>{{ deepThinking?'✅':'❌' }}</b></div>
         </div>
@@ -116,13 +137,12 @@
           </div>
         </div>
 
-        <!-- 大提示：手动选择自定义模型 -->
+        <!-- 大提示：默认模型已自动配置 -->
         <div class="big-warning">
-          <div class="big-warning-title">重要提示</div>
+          <div class="big-warning-title">部署完成</div>
           <div class="big-warning-content">
-            部署完成后，请在软件中 <b>手动选择模型列表中的「自定义模型」</b>！<br>
-            如果不手动选择自定义模型，配置将<b>不会生效</b>！<br><br>
-            <span style="color:#faad14">WorkBuddy / CodeBuddy CN 需要先登录对应的账号才能使用自定义模型</span>
+            默认模型 <b style="color:#52c41a">{{ ALL_MODELS.find(m=>m.id===defaultModel)?.name }}</b> 已自动配置，重启后即可使用！<br><br>
+            <span style="color:#8c8c8c">如需切换其他模型，可在各平台的「自定义模型」中随时更换</span>
           </div>
         </div>
 
@@ -140,9 +160,9 @@
       </div>
 
       <!-- 导航按钮 -->
-      <div v-if="step<4" class="nav-btns">
+      <div v-if="step<5" class="nav-btns">
         <button v-if="step>0" @click="step--">上一步</button>
-        <button v-if="step<3" class="primary" @click="nextStep" :disabled="!canNext">下一步</button>
+        <button v-if="step<4" class="primary" @click="nextStep" :disabled="!canNext">下一步</button>
       </div>
     </div>
 
@@ -168,6 +188,7 @@ const detectDone = ref(false);
 const installed = ref({});
 const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
+const defaultModel = ref("glm-5.2");
 const reasoningLevel = ref("max");
 const deepThinking = ref(true);
 const deploying = ref(false);
@@ -178,11 +199,13 @@ const toast = ref({ show: false, msg: "", type: "info" });
 function showToast(msg, type="info") { toast.value = { show:true, msg, type }; setTimeout(()=>{toast.value={show:false,msg:"",type:"info"};},3000); }
 
 const installedCount = computed(() => Object.values(installed.value).filter(p => p?.installed).length);
+const selectedModelObjs = computed(() => ALL_MODELS.filter(m => selectedModels.value.includes(m.id)));
 const allSuccess = computed(() => deployResults.value.length > 0 && deployResults.value.every(r => r.success));
 const successPlatforms = computed(() => deployResults.value.filter(r => r.success).map(r => r.platform));
 const canNext = computed(() => {
   if (step.value === 0) return detectDone.value && selectedPlatforms.value.length > 0;
   if (step.value === 1) return selectedModels.value.length > 0;
+  if (step.value === 3) return !!defaultModel.value;
   return true;
 });
 
@@ -204,6 +227,10 @@ function toggleModel(id) {
   const i = selectedModels.value.indexOf(id);
   if (i >= 0) selectedModels.value.splice(i, 1);
   else selectedModels.value.push(id);
+  // If default model was deselected, switch to first available
+  if (!selectedModels.value.includes(defaultModel.value) && selectedModels.value.length > 0) {
+    defaultModel.value = selectedModels.value[0];
+  }
 }
 
 function selectAll() { selectedModels.value = ALL_MODELS.map(m => m.id); }
@@ -239,12 +266,14 @@ async function doDeploy() {
   deployResults.value = [];
   try {
     const baseUrl = "https://" + props.serverPlatform + ".2bbb.cn";
-    const modelObjs = ALL_MODELS.filter(m => selectedModels.value.includes(m.id));
+    // Put default model first so isDefault=true lands on it
+    const orderedIds = [defaultModel.value, ...selectedModels.value.filter(id => id !== defaultModel.value)];
+    const modelObjs = orderedIds.map(id => ALL_MODELS.find(m => m.id === id)).filter(Boolean);
     for (const p of selectedPlatforms.value) {
       const configs = modelObjs.map(m => buildModelConfig(m, reasoningLevel.value, deepThinking.value));
-      const config = buildDeployConfig(p, props.apiKey, baseUrl, modelObjs[0]?.id || "glm-5.2", reasoningLevel.value, deepThinking.value);
+      const config = buildDeployConfig(p, props.apiKey, baseUrl, defaultModel.value, reasoningLevel.value, deepThinking.value);
       config.model_configs = configs;
-      config.selected_model_ids = selectedModels.value;
+      config.selected_model_ids = orderedIds;
       try {
         const result = await executeDeploy(config);
         deployResults.value.push({ platform: p, success: true, message: typeof result === "string" ? result : "成功" });
@@ -252,7 +281,7 @@ async function doDeploy() {
         deployResults.value.push({ platform: p, success: false, error: e.message });
       }
     }
-    step.value = 4;
+    step.value = 5;
   } catch(e) { showToast("失败: " + e.message, "error"); }
   finally { deploying.value = false; }
 }
@@ -320,6 +349,7 @@ async function restartApp(platformKey) {
 
 /* Reasoning */
 .reason-hint { background:#f0f5ff; border-radius:8px; padding:8px 12px; font-size:12px; color:#2f54eb; margin-bottom:10px; }
+.default-model-hint { background:#f0f5ff; border-radius:8px; padding:10px 12px; font-size:13px; color:#2f54eb; margin-bottom:10px; line-height:1.5; }
 .reasoning-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:12px; }
 .reason-card { border:2px solid #eee; border-radius:8px; padding:8px 4px; text-align:center; cursor:pointer; }
 .reason-card:hover { border-color:#2f54eb; }
