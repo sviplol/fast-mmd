@@ -119,7 +119,7 @@
       </div>
 
       <!-- 结果 -->
-      <div v-if="step===4" class="step-content">
+      <div v-if="step===5" class="step-content">
         <div class="result-icon">{{ allSuccess ? '✅' : '⚠️' }}</div>
         <div class="result-title">{{ allSuccess ? '部署成功！' : '部分完成' }}</div>
         <div v-for="r in deployResults" :key="r.platform" class="result-row">
