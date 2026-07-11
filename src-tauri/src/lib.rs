@@ -2062,6 +2062,54 @@ fn get_error_info(code: &str) -> serde_json::Value {
     })
 }
 
+/// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
+const APP_VERSION: u32 = 1;
+
+/// 获取当前软件版本号
+#[tauri::command]
+fn get_app_version() -> u32 {
+    APP_VERSION
+}
+
+/// 检查更新：请求远程版本接口，返回是否有新版本
+#[derive(Serialize)]
+struct UpdateCheckResult {
+    has_update: bool,
+    current: u32,
+    latest: u32,
+    url: String,
+}
+
+#[tauri::command]
+async fn check_update() -> Result<UpdateCheckResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get("https://glm.2bbb.cn/api/fastmmd/version")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let latest = body.get("version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let url = body.get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://2bbb.lanzout.com/b04mle8za")
+        .to_string();
+    Ok(UpdateCheckResult {
+        has_update: latest > APP_VERSION,
+        current: APP_VERSION,
+        latest,
+        url,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2088,6 +2136,8 @@ pub fn run() {
             lookup_error,
             open_url,
             clear_platform_deploy,
+            get_app_version,
+            check_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

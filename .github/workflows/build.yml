@@ -18,18 +18,18 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
-            artifact_name: "一键部署安装版Windows.exe"
+            artifact_name: "一键部署安装版Windows"
             artifact_glob: "src-tauri/target/release/bundle/nsis/*.exe"
             upload_lanzou: false
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-            artifact_name: "一键部署Mac M芯片.dmg"
+            artifact_name: "一键部署Mac M芯片"
             artifact_glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
             rust_target: "aarch64-apple-darwin"
             upload_lanzou: true
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
-            artifact_name: "一键部署Mac英特尔芯片.dmg"
+            artifact_name: "一键部署Mac英特尔芯片"
             artifact_glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
             rust_target: "x86_64-apple-darwin"
             upload_lanzou: true
@@ -37,6 +37,14 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        shell: bash
+        run: |
+          VER=$(python3 -c "import json; print(json.load(open('version.json'))['version'])")
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Version: v$VER"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,7 +71,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p upload
-          cp ${{ matrix.artifact_glob }} upload/"${{ matrix.artifact_name }}"
+          EXT="${{ matrix.platform == 'windows-latest' && 'exe' || 'dmg' }}"
+          FILENAME="${{ matrix.artifact_name }}_v${{ steps.ver.outputs.version }}.$EXT"
+          cp ${{ matrix.artifact_glob }} "upload/$FILENAME"
           ls -la upload/
 
       - name: Upload to artifact
