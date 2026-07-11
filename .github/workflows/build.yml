@@ -18,16 +18,16 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
-            artifact_name: "Fast-MMD-Windows-Setup.exe"
+            artifact_name: "一键部署安装版Windows.exe"
             artifact_glob: "src-tauri/target/release/bundle/nsis/*.exe"
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-            artifact_name: "Fast-MMD-Mac-ARM.dmg"
+            artifact_name: "一键部署Mac M芯片.dmg"
             artifact_glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
             rust_target: "aarch64-apple-darwin"
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
-            artifact_name: "Fast-MMD-Mac-Intel.dmg"
+            artifact_name: "一键部署Mac英特尔芯片.dmg"
             artifact_glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
             rust_target: "x86_64-apple-darwin"
 
