@@ -140,6 +140,14 @@
       </div>
     </div>
 
+    <!-- 右下角版本号 -->
+    <div class="version-bar">
+      <span class="version-text">v{{ appVersion }}</span>
+      <button class="version-check-btn" @click="manualCheckUpdate" :disabled="checkingUpdate">
+        {{ checkingUpdate ? '检查中...' : '检查更新' }}
+      </button>
+    </div>
+
     <!-- 强制更新弹窗 -->
     <div v-if="updateInfo.show" class="update-overlay">
       <div class="update-box">
@@ -178,6 +186,8 @@ const prevStage = ref("activate");
 const toast = reactive({ show: false, msg: "", type: "info" });
 const confirmDialog = reactive({ show: false, title: "确认", msg: "", onOk: null, onCancel: null });
 const updateInfo = reactive({ show: false, current: 0, latest: 0, url: "" });
+const appVersion = ref(0);
+const checkingUpdate = ref(false);
 
 function showConfirm(title, msg, onOk) {
   confirmDialog.show = true;
@@ -211,6 +221,8 @@ function copyText(text) {
 async function checkForUpdate() {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
+    const v = await invoke("get_app_version");
+    appVersion.value = v;
     const r = await invoke("check_update");
     if (r.has_update) {
       updateInfo.show = true;
@@ -220,6 +232,27 @@ async function checkForUpdate() {
     }
   } catch(e) {
     // 非Tauri环境或请求失败，静默跳过
+  }
+}
+
+// 手动检查更新
+async function manualCheckUpdate() {
+  checkingUpdate.value = true;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const r = await invoke("check_update");
+    if (r.has_update) {
+      updateInfo.show = true;
+      updateInfo.current = r.current;
+      updateInfo.latest = r.latest;
+      updateInfo.url = r.url;
+    } else {
+      showToast("当前已是最新版本 v" + r.current, "success");
+    }
+  } catch(e) {
+    showToast("检查更新失败", "error");
+  } finally {
+    checkingUpdate.value = false;
   }
 }
 
@@ -546,4 +579,11 @@ input, textarea, select { user-select:text; -webkit-user-select:text; -webkit-ap
 .update-version { color:#999; font-size:13px; margin-bottom:24px; }
 .update-btn { width:100%; height:48px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f54eb,#722ed1); color:#fff; font-size:17px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(47,84,235,.3); }
 .update-btn:hover { box-shadow:0 6px 24px rgba(47,84,235,.4); transform:translateY(-1px); }
+
+/* 右下角版本栏 */
+.version-bar { position:fixed; bottom:8px; right:12px; z-index:9999; display:flex; align-items:center; gap:8px; }
+.version-text { font-size:12px; color:rgba(255,255,255,.6); }
+.version-check-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; }
+.version-check-btn:hover { background:rgba(255,255,255,.15); color:#fff; }
+.version-check-btn:disabled { opacity:.5; cursor:default; }
 </style>
