@@ -432,7 +432,8 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
     };
 
     // 所有模型统一格式 — 跟 CodeBuddy 实际能用的配置完全一致
-    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+    // 第一个模型设 isDefault=true，让客户端启动后自动选中 GLM-5.2
+    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
@@ -447,6 +448,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsImages": true,
             "supportsReasoning": true,
             "onlyReasoning": true,
+            "isDefault": i == 0,
             "reasoning": {
                 "effort": "max",
                 "summary": "auto",
@@ -533,7 +535,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
 
     // 添加新的 custom-local: 模型
     // 严格按 WorkBuddy UI 手动添加验证可用的格式 (无 reasoning 字段, 无 maxInputTokens 等额外字段)
-    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().map(|mid| {
+    // 第一个模型设 isDefault=true，让客户端启动后自动选中 GLM-5.2
+    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
@@ -550,6 +553,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
             "useCustomProtocol": false,
+            "isDefault": i == 0,
             "aliases": [mid],
             "tags": ["custom"]
         })
