@@ -2063,7 +2063,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 1;
+const APP_VERSION: u32 = 2;
 
 /// 获取当前软件版本号
 #[tauri::command]
