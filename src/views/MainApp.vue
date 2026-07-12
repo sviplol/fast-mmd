@@ -169,7 +169,8 @@ async function doRecharge() {
   try {
     var r = await redeemCard(props.serverPlatform, rechargeCard.value.trim(), props.apiKey);
     if (r.ok) {
-      showToast("充值成功 +" + r.balance + " 积分", "success");
+      const added = r.added !== undefined ? r.added : r.balance;
+      showToast("充值成功 +" + Number(added).toFixed(2) + " 积分", "success");
       rechargeCard.value = "";
       showRecharge.value = false;
       loadData();
