@@ -28,6 +28,14 @@
         </div>
       </div>
       <div v-if="tab==='usage'">
+        <div v-if="usage.recharge_items && usage.recharge_items.length" class="recharge-list">
+          <div class="recharge-list-title">📋 充值记录</div>
+          <div v-for="(r,i) in usage.recharge_items" :key="'r'+i" class="recharge-row">
+            <span class="r-code" @click="copy(r.code)" style="cursor:pointer">{{r.code}}</span>
+            <span class="r-amount" style="color:#52c41a">+{{Number(r.amount).toFixed(2)}}</span>
+            <span class="r-time">{{(r.time||'').replace('T',' ').replace('Z','')}}</span>
+          </div>
+        </div>
         <div v-if="!usage.items||!usage.items.length" class="empty">暂无消费记录</div>
         <div v-else class="usage-list">
           <div v-for="(item,i) in usage.items" :key="i" class="usage-row">
@@ -238,6 +246,13 @@ async function doClearDeploy() {
 .u-model { color:#2f54eb; min-width:100px; font-weight:600; }
 .u-cost { color:#ff4d4f; min-width:60px; }
 .u-tok { color:#999; }
+
+.recharge-list { margin-bottom:16px; }
+.recharge-list-title { font-size:13px; font-weight:600; color:#555; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #eee; }
+.recharge-row { display:flex; gap:8px; padding:6px 8px; background:#f6ffed; border-radius:6px; margin-bottom:4px; font-size:12px; align-items:center; }
+.r-code { color:#333; flex:1; }
+.r-amount { min-width:60px; font-weight:600; }
+.r-time { color:#999; min-width:140px; }
 
 .model-tags { display:flex; flex-wrap:wrap; gap:6px; }
 .model-tag { background:#fff; padding:4px 12px; border-radius:6px; font-size:13px; color:#2f54eb; border:1px solid #ddd; }

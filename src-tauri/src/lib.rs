@@ -2063,7 +2063,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 2;
+const APP_VERSION: u32 = 3;
 
 /// 获取当前软件版本号
 #[tauri::command]
@@ -2083,7 +2083,9 @@ struct UpdateCheckResult {
 #[tauri::command]
 async fn check_update() -> Result<UpdateCheckResult, String> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .danger_accept_invalid_certs(true)
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client
@@ -2091,10 +2093,12 @@ async fn check_update() -> Result<UpdateCheckResult, String> {
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    let body: serde_json::Value = resp
-        .json()
+    let text = resp
+        .text()
         .await
         .map_err(|e| e.to_string())?;
+    let body: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{}: {}", e, &text[..text.len().min(200)]))?;
     let latest = body.get("version")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
