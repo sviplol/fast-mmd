@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""Upload files to Lanzou Cloud (Fastmodels folder) using pure stdlib.
+"""Lanzou Cloud CLI — pure Python stdlib, no pip install needed.
 
-Usage: python3 lanzou_upload.py <dir_or_file>
+Usage:
+  Set env vars: YLOGIN, PHPDISK_INFO, FASTMODELS_FID
 
-Uses urllib + manual multipart construction — no pip install needed.
+Commands:
+  upload <file_or_dir>          Upload file(s) to target folder (delete old, upload, move)
+  mkdir <name> [parent_id]      Create folder (parent_id defaults to 0=root)
+  list [folder_id]              List folders (no arg) or files in folder
+  share <file_id>               Get file share link
+  share-folder <folder_id>      Get folder share link
+  delete <file_id>              Delete file
+  move <file_id> <folder_id>    Move file to folder
+  rename-folder <new_name> <folder_id>  Rename folder
 
-Workflow:
-  1. List existing files in target folder, delete same-name old ones
-  2. Upload file (goes to root — html5up.php folder_id param is ignored)
-  3. Move uploaded file from root to target folder via doupload.php task=20
+Requires: Python 3 only (urllib, json, ssl, uuid, os, sys, time, glob, urllib.parse)
 """
 import os
 import sys
@@ -33,17 +39,23 @@ USER_AGENT = (
 _ssl_ctx = ssl.create_default_context()
 
 
+def _get_creds():
+    """Get credentials from env vars, with built-in defaults."""
+    ylogin = os.environ.get("YLOGIN", "344454")
+    phpdisk_info = os.environ.get(
+        "PHPDISK_INFO",
+        "AjUCNFI0ADgPOFA0DV5QO1Y%2BBQ5dd1NtVCQCOlM8UDlVNABoBD8EAQ8%2BAmYAO1FvUjQGZgllATUPOFMzAGUGNAJlAmJSMAA%2FDzxQMw0zUG5WNQU0XWJTM1RkAmNTYlBkVTcAYwQ3BDEPBAJjAGlRO1I1BjEJYgFvDz1TOgAyBj0CDwIxUjcANA8%2BUDYNZVA%2FVjEFNV01",
+    )
+    folder_id = os.environ.get("FASTMODELS_FID", "2008280")
+    return ylogin, phpdisk_info, folder_id
+
+
 def _make_cookie(ylogin, phpdisk_info):
     return f"ylogin={ylogin}; phpdisk_info={phpdisk_info}"
 
 
 def build_multipart(fields, files):
-    """Build a multipart/form-data body using pure stdlib.
-
-    fields: dict of str -> str
-    files:  dict of fieldname -> (filename, fileobj, content_type)
-    Returns (body_bytes, content_type_header)
-    """
+    """Build a multipart/form-data body using pure stdlib."""
     boundary = "----WebKitFormBoundary" + uuid.uuid4().hex[:16]
     lines = []
 
@@ -80,12 +92,21 @@ def api_call(params, ylogin, phpdisk_info):
     req.add_header("Cookie", _make_cookie(ylogin, phpdisk_info))
     req.add_header("Referer", REFERER)
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req, timeout=30, context=_ssl_ctx) as resp:
-        return json.loads(resp.read().decode("utf-8", errors="replace"))
+    try:
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_ctx) as resp:
+            return json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as e:
+        return {"zt": -1, "info": f"HTTP {e.code}", "error": True}
+    except Exception as e:
+        return {"zt": -1, "info": str(e), "error": True}
 
+
+# ============================================================
+# API Functions
+# ============================================================
 
 def list_folder_files(folder_id, ylogin, phpdisk_info):
-    """List files in a Lanzou folder. Returns list of {name_all, id, ...}."""
+    """List files in a Lanzou folder."""
     result = api_call(
         {"task": "5", "folder_id": folder_id, "pg": "1"},
         ylogin, phpdisk_info,
@@ -94,30 +115,57 @@ def list_folder_files(folder_id, ylogin, phpdisk_info):
     return files if isinstance(files, list) else []
 
 
-def list_root_files(ylogin, phpdisk_info):
-    """List files in root directory."""
-    result = api_call({"task": "5", "pg": "1"}, ylogin, phpdisk_info)
-    files = result.get("text", [])
-    return files if isinstance(files, list) else []
+def list_folders(ylogin, phpdisk_info):
+    """List all folders in root."""
+    result = api_call({"task": "47", "folder_id": "-1"}, ylogin, phpdisk_info)
+    folders = result.get("text", [])
+    return folders if isinstance(folders, list) else []
+
+
+def create_folder(name, parent_id, ylogin, phpdisk_info):
+    """Create a new folder. parent_id=0 for root."""
+    result = api_call(
+        {"task": "4", "folder_name": name, "folder_id": parent_id},
+        ylogin, phpdisk_info,
+    )
+    return result
 
 
 def delete_file(file_id, ylogin, phpdisk_info):
-    """Delete a file by its id."""
+    """Delete a file by its numeric id."""
     result = api_call({"task": "6", "file_id": file_id}, ylogin, phpdisk_info)
-    return result.get("zt") == 1
+    return result
 
 
-def move_file_to_folder(file_id, folder_id, ylogin, phpdisk_info):
-    """Move a file from root to a folder. Returns True on success."""
+def delete_folder(folder_id, ylogin, phpdisk_info):
+    """Delete a folder by its fol_id."""
+    result = api_call({"task": "3", "folder_id": folder_id}, ylogin, phpdisk_info)
+    return result
+
+
+def move_file(file_id, folder_id, ylogin, phpdisk_info):
+    """Move a file to a folder. file_id must be numeric id, NOT f_id."""
     result = api_call(
         {"task": "20", "file_id": file_id, "folder_id": folder_id},
         ylogin, phpdisk_info,
     )
-    return result.get("zt") == 1
+    return result
+
+
+def get_file_share(file_id, ylogin, phpdisk_info):
+    """Get share link for a file."""
+    result = api_call({"task": "22", "file_id": file_id}, ylogin, phpdisk_info)
+    return result
+
+
+def get_folder_share(folder_id, ylogin, phpdisk_info):
+    """Get share link for a folder."""
+    result = api_call({"task": "18", "folder_id": folder_id}, ylogin, phpdisk_info)
+    return result
 
 
 def upload_file(filepath, ylogin, phpdisk_info):
-    """Upload a single file to Lanzou Cloud root, return numeric file_id or None.
+    """Upload a single file to Lanzou root, return numeric file_id or None.
 
     Lanzou's html5up.php returns both 'id' (numeric, used for move/delete)
     and 'f_id' (string hash, used for share links). We need the numeric id.
@@ -133,20 +181,12 @@ def upload_file(filepath, ylogin, phpdisk_info):
         "id": "WU_FILE_0",
         "name": filename,
         "type": "application/octet-stream",
-        "lastModifiedDate": time.strftime(
-            "%a %b %d %Y %H:%M:%S GMT+0800"
-        ),
+        "lastModifiedDate": time.strftime("%a %b %d %Y %H:%M:%S GMT+0800"),
         "size": str(filesize),
     }
 
     with open(filepath, "rb") as f:
-        files = {
-            "upload_file": (
-                filename,
-                f,
-                "application/octet-stream",
-            )
-        }
+        files = {"upload_file": (filename, f, "application/octet-stream")}
         body, content_type = build_multipart(fields, files)
 
     cookie = _make_cookie(ylogin, phpdisk_info)
@@ -175,7 +215,6 @@ def upload_file(filepath, ylogin, phpdisk_info):
         if result.get("zt") == 1:
             text_list = result.get("text", [{}])
             if text_list:
-                # 'id' is the numeric file id used for move/delete API calls
                 file_id = text_list[0].get("id", "")
                 f_id = text_list[0].get("f_id", "")
                 print(f"  Upload OK, id={file_id} f_id={f_id}")
@@ -189,8 +228,8 @@ def upload_file(filepath, ylogin, phpdisk_info):
         return None
 
 
-def process_file(filepath, ylogin, phpdisk_info, folder_id):
-    """Full upload workflow for one file: delete old -> upload -> move."""
+def process_upload(filepath, ylogin, phpdisk_info, folder_id):
+    """Full upload workflow: delete old -> upload -> move."""
     filename = os.path.basename(filepath)
     print(f"\n--- {filename} ---")
 
@@ -214,32 +253,29 @@ def process_file(filepath, ylogin, phpdisk_info, folder_id):
     # Step 3: Move from root to target folder
     print(f"  Moving to folder {folder_id}...")
     try:
-        ok = move_file_to_folder(file_id, folder_id, ylogin, phpdisk_info)
-        if ok:
+        result = move_file(file_id, folder_id, ylogin, phpdisk_info)
+        if result.get("zt") == 1:
             print(f"  Moved OK")
             return True
         else:
-            print(f"  Move failed, file stays in root")
+            print(f"  Move failed: {result.get('info')}, file stays in root")
             return False
     except Exception as e:
         print(f"  Move error: {e}")
         return False
 
 
-def main():
-    ylogin = os.environ.get("YLOGIN", "")
-    phpdisk_info = os.environ.get("PHPDISK_INFO", "")
-    folder_id = os.environ.get("FASTMODELS_FID", "")
+# ============================================================
+# CLI Commands
+# ============================================================
 
-    if not ylogin or not phpdisk_info or not folder_id:
-        print("Missing secrets (YLOGIN/PHPDISK_INFO/FASTMODELS_FID), skip upload")
-        sys.exit(0)
-
-    if len(sys.argv) < 2:
-        print("Usage: lanzou_upload.py <dir_or_file>")
+def cmd_upload(args):
+    """Upload file(s) to target folder."""
+    if not args:
+        print("Usage: upload <file_or_dir>")
         sys.exit(1)
-
-    target = sys.argv[1]
+    target = args[0]
+    ylogin, phpdisk_info, folder_id = _get_creds()
 
     if os.path.isdir(target):
         files = sorted(glob.glob(os.path.join(target, "*")))
@@ -253,11 +289,226 @@ def main():
 
     all_ok = True
     for filepath in files:
-        ok = process_file(filepath, ylogin, phpdisk_info, folder_id)
+        ok = process_upload(filepath, ylogin, phpdisk_info, folder_id)
         if not ok:
             all_ok = False
 
+    # Print share links for uploaded files
+    if all_ok:
+        print("\n=== Share Links ===")
+        folder_files = list_folder_files(folder_id, ylogin, phpdisk_info)
+        for f in folder_files:
+            name = f.get("name_all", "")
+            fid = f.get("id", "")
+            if name in [os.path.basename(fp) for fp in files]:
+                share = get_file_share(fid, ylogin, phpdisk_info)
+                info = share.get("info", {})
+                if isinstance(info, dict):
+                    f_id = info.get("f_id", "")
+                    newd = info.get("is_newd", "")
+                    pwd = info.get("pwd", "")
+                    link = f"{newd}/{f_id}" if f_id and newd else "N/A"
+                    print(f"  {name}: {link} (pwd: {pwd})")
+
     sys.exit(0 if all_ok else 1)
+
+
+def cmd_mkdir(args):
+    """Create a new folder."""
+    if not args:
+        print("Usage: mkdir <name> [parent_id]")
+        sys.exit(1)
+    name = args[0]
+    parent_id = args[1] if len(args) > 1 else "0"
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = create_folder(name, parent_id, ylogin, phpdisk_info)
+    if result.get("zt") == 1:
+        print(f"Folder '{name}' created in parent {parent_id}")
+        # Find the new folder's fol_id
+        folders = list_folders(ylogin, phpdisk_info)
+        for f in folders:
+            if f.get("name") == name:
+                fol_id = f.get("fol_id", "")
+                print(f"  fol_id: {fol_id}")
+                # Get share link
+                share = get_folder_share(fol_id, ylogin, phpdisk_info)
+                info = share.get("info", {})
+                if isinstance(info, dict):
+                    new_url = info.get("new_url", "")
+                    pwd = info.get("pwd", "")
+                    print(f"  Share: {new_url} (pwd: {pwd})")
+                break
+    else:
+        print(f"Create failed: {result.get('info')}")
+
+
+def cmd_list(args):
+    """List folders or files in a folder."""
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    if args:
+        folder_id = args[0]
+        print(f"=== Files in folder {folder_id} ===")
+        files = list_folder_files(folder_id, ylogin, phpdisk_info)
+        if not files:
+            print("  (empty)")
+        for f in files:
+            name = f.get("name_all", f.get("name", ""))
+            fid = f.get("id", "")
+            size = f.get("size", "")
+            t = f.get("time", "")
+            print(f"  {name:45} id={fid:15} size={size:10} time={t}")
+    else:
+        print("=== Folders ===")
+        folders = list_folders(ylogin, phpdisk_info)
+        for f in folders:
+            name = f.get("name", "")
+            fol_id = f.get("fol_id", "")
+            print(f"  {name:45} fol_id={fol_id}")
+
+
+def cmd_share(args):
+    """Get file share link."""
+    if not args:
+        print("Usage: share <file_id>")
+        sys.exit(1)
+    file_id = args[0]
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = get_file_share(file_id, ylogin, phpdisk_info)
+    info = result.get("info", {})
+    if isinstance(info, dict):
+        f_id = info.get("f_id", "")
+        newd = info.get("is_newd", "")
+        pwd = info.get("pwd", "")
+        onof = info.get("onof", "0")
+        link = f"{newd}/{f_id}" if f_id and newd else "N/A"
+        print(f"Share link: {link}")
+        print(f"Password: {pwd if onof == '1' else '(no password)'}")
+    else:
+        print(f"Failed: {result}")
+
+
+def cmd_share_folder(args):
+    """Get folder share link."""
+    if not args:
+        print("Usage: share-folder <folder_id>")
+        sys.exit(1)
+    folder_id = args[0]
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = get_folder_share(folder_id, ylogin, phpdisk_info)
+    info = result.get("info", {})
+    if isinstance(info, dict):
+        name = info.get("name", "")
+        new_url = info.get("new_url", "")
+        pwd = info.get("pwd", "")
+        onof = info.get("onof", "0")
+        print(f"Folder: {name}")
+        print(f"Share link: {new_url}")
+        print(f"Password: {pwd if onof == '1' else '(no password)'}")
+    else:
+        print(f"Failed: {result}")
+
+
+def cmd_delete(args):
+    """Delete a file."""
+    if not args:
+        print("Usage: delete <file_id>")
+        sys.exit(1)
+    file_id = args[0]
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = delete_file(file_id, ylogin, phpdisk_info)
+    if result.get("zt") == 1:
+        print(f"Deleted file {file_id}")
+    else:
+        print(f"Delete failed: {result.get('info')}")
+
+
+def cmd_move(args):
+    """Move a file to a folder."""
+    if len(args) < 2:
+        print("Usage: move <file_id> <folder_id>")
+        sys.exit(1)
+    file_id = args[0]
+    folder_id = args[1]
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = move_file(file_id, folder_id, ylogin, phpdisk_info)
+    if result.get("zt") == 1:
+        print(f"Moved file {file_id} to folder {folder_id}")
+    else:
+        print(f"Move failed: {result.get('info')}")
+
+
+def cmd_rename_folder(args):
+    """Rename a folder."""
+    if len(args) < 2:
+        print("Usage: rename-folder <new_name> <folder_id>")
+        sys.exit(1)
+    new_name = args[0]
+    folder_id = args[1]
+    ylogin, phpdisk_info, _ = _get_creds()
+
+    result = create_folder(new_name, folder_id, ylogin, phpdisk_info)
+    if result.get("zt") == 1:
+        print(f"Renamed folder {folder_id} to '{new_name}'")
+    else:
+        print(f"Rename failed: {result.get('info')}")
+
+
+# ============================================================
+# Main
+# ============================================================
+
+COMMANDS = {
+    "upload": cmd_upload,
+    "mkdir": cmd_mkdir,
+    "list": cmd_list,
+    "share": cmd_share,
+    "share-folder": cmd_share_folder,
+    "delete": cmd_delete,
+    "move": cmd_move,
+    "rename-folder": cmd_rename_folder,
+}
+
+USAGE = """Lanzou Cloud CLI (pure stdlib, no pip needed)
+
+Usage: lanzou_upload.py <command> [args]
+
+Commands:
+  upload <file_or_dir>              Upload file(s) to target folder
+  mkdir <name> [parent_id]          Create folder (parent_id=0 for root)
+  list [folder_id]                  List folders (no arg) or files in folder
+  share <file_id>                   Get file share link
+  share-folder <folder_id>          Get folder share link
+  delete <file_id>                  Delete file
+  move <file_id> <folder_id>        Move file to folder
+  rename-folder <new_name> <folder_id>  Rename folder
+
+Env vars (with defaults):
+  YLOGIN=344454
+  PHPDISK_INFO=AjUCNFI0ADgPOFA0DV5QO1Y...
+  FASTMODELS_FID=2008280
+"""
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(USAGE)
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+    args = sys.argv[2:]
+
+    if cmd not in COMMANDS:
+        print(f"Unknown command: {cmd}")
+        print(USAGE)
+        sys.exit(1)
+
+    COMMANDS[cmd](args)
 
 
 if __name__ == "__main__":

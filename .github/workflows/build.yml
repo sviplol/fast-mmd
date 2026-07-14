@@ -76,7 +76,7 @@ jobs:
           cp ${{ matrix.artifact_glob }} "upload/$FILENAME"
           # Windows: 额外生成免安装版(直接exe, 推荐)
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            cp "src-tauri/target/release/Fast MMD.exe" "upload/【推荐】Windows免安装版_v${{ steps.ver.outputs.version }}.exe"
+            cp src-tauri/target/release/fast-mmd.exe "upload/【推荐】Windows免安装版_v${{ steps.ver.outputs.version }}.exe"
           fi
           # Mac M芯片额外打包修复脚本
           if [ "${{ matrix.artifact_name }}" = "【Mac M芯片】一键部署" ]; then
