@@ -37,6 +37,8 @@ USER_AGENT = (
 )
 
 _ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
 
 
 def _get_creds():
@@ -229,7 +231,7 @@ def upload_file(filepath, ylogin, phpdisk_info):
 
 
 def process_upload(filepath, ylogin, phpdisk_info, folder_id):
-    """Full upload workflow: delete old -> upload -> move."""
+    """Full upload workflow: delete old -> upload (with retry) -> move."""
     filename = os.path.basename(filepath)
     print(f"\n--- {filename} ---")
 
@@ -245,9 +247,19 @@ def process_upload(filepath, ylogin, phpdisk_info, folder_id):
     except Exception as e:
         print(f"  Warning: could not list/delete old files: {e}")
 
-    # Step 2: Upload to root (html5up.php ignores folder_id)
-    file_id = upload_file(filepath, ylogin, phpdisk_info)
+    # Step 2: Upload to root with retry (html5up.php ignores folder_id)
+    file_id = None
+    for attempt in range(3):
+        if attempt > 0:
+            wait = 10 * attempt
+            print(f"  Retry {attempt+1}/3 after {wait}s...")
+            time.sleep(wait)
+        file_id = upload_file(filepath, ylogin, phpdisk_info)
+        if file_id:
+            break
+        print(f"  Upload attempt {attempt+1} failed")
     if not file_id:
+        print(f"  All upload attempts failed for {filename}")
         return False
 
     # Step 3: Move from root to target folder
