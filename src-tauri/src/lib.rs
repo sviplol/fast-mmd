@@ -1070,6 +1070,9 @@ fn run_diagnostics() -> Vec<DiagnosticItem> {
     // 5. 配置文件完整性
     items.push(check_config_files());
 
+    // 6. 系统代理检测
+    items.push(check_system_proxy());
+
     items
 }
 
@@ -1094,6 +1097,87 @@ fn check_network() -> DiagnosticItem {
         detail: "网络检查由前端执行".into(),
         fixable: false,
         fix_action: "".into(),
+    }
+}
+
+/// 检测系统代理设置（可能导致127.0.0.1连不上）
+fn check_system_proxy() -> DiagnosticItem {
+    #[cfg(target_os = "windows")]
+    {
+        // 检查注册表 ProxyEnable
+        if let Ok(output) = std::process::Command::new("reg")
+            .args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "ProxyEnable"])
+            .no_window()
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("0x1") {
+                // 代理开启，检查代理服务器地址
+                let proxy_server = if let Ok(o2) = std::process::Command::new("reg")
+                    .args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "/v", "ProxyServer"])
+                    .no_window()
+                    .output()
+                {
+                    let s = String::from_utf8_lossy(&o2.stdout);
+                    s.lines().find(|l| l.contains("ProxyServer"))
+                        .and_then(|l| l.split_whitespace().last())
+                        .unwrap_or("unknown").to_string()
+                } else { "unknown".to_string() };
+                return DiagnosticItem {
+                    id: "system_proxy".into(),
+                    category: "网络".into(),
+                    title: "系统代理已开启（可能导致连不上服务器）".into(),
+                    status: "warning".into(),
+                    detail: format!("代理服务器: {} — 如遇连接问题可一键清除", proxy_server),
+                    fixable: true,
+                    fix_action: "fix_proxy".into(),
+                };
+            }
+        }
+        // 检查环境变量代理
+        for var in &["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY"] {
+            if let Ok(val) = std::env::var(var) {
+                if !val.is_empty() {
+                    return DiagnosticItem {
+                        id: "env_proxy".into(),
+                        category: "网络".into(),
+                        title: format!("环境变量 {} 已设置（可能导致连不上）", var),
+                        status: "warning".into(),
+                        detail: format!("值: {} — 可一键清除系统代理", val),
+                        fixable: true,
+                        fix_action: "fix_proxy".into(),
+                    };
+                }
+            }
+        }
+        DiagnosticItem {
+            id: "system_proxy".into(),
+            category: "网络".into(),
+            title: "系统代理未开启".into(),
+            status: "ok".into(),
+            detail: "无代理干扰".into(),
+            fixable: false,
+            fix_action: "".into(),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        for var in &["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"] {
+            if let Ok(val) = std::env::var(var) {
+                if !val.is_empty() {
+                    return DiagnosticItem {
+                        id: "env_proxy".into(),
+                        category: "网络".into(),
+                        title: format!("环境变量 {} 已设置", var),
+                        status: "warning".into(),
+                        detail: format!("值: {}", val),
+                        fixable: true,
+                        fix_action: "fix_proxy".into(),
+                    };
+                }
+            }
+        }
+        DiagnosticItem { id: "system_proxy".into(), category: "网络".into(), title: "无代理干扰".into(), status: "ok".into(), detail: "".into(), fixable: false, fix_action: "".into() }
     }
 }
 
@@ -1356,6 +1440,26 @@ fn run_fix(fix_action: String) -> Result<String, String> {
                 }
             }
             Ok("缓存已清理".into())
+        }
+        "fix_proxy" => {
+            // 静默清除系统代理 + 环境变量代理 + WinHTTP代理
+            #[cfg(target_os = "windows")]
+            {
+                // 1. 关闭注册表代理
+                let _ = std::process::Command::new("reg")
+                    .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+                           "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f"])
+                    .no_window().output();
+                let _ = std::process::Command::new("reg")
+                    .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+                           "/v", "ProxyServer", "/t", "REG_SZ", "/d", "", "/f"])
+                    .no_window().output();
+                // 2. 重置 WinHTTP 代理
+                let _ = std::process::Command::new("netsh")
+                    .args(["winhttp", "reset", "proxy"])
+                    .no_window().output();
+            }
+            Ok("PROXY_FIXED".into())
         }
         _ => Err("未知修复操作".into()),
     }
@@ -2063,7 +2167,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 3;
+const APP_VERSION: u32 = 4;
 
 /// 获取当前软件版本号
 #[tauri::command]

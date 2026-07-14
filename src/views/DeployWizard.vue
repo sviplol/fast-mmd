@@ -64,7 +64,8 @@
             <span class="mcheck">{{ selectedModels.includes(m.id) ? '✅' : '⬜' }}</span>
             <span class="mname">{{ m.name }}</span>
             <span class="mdesc">{{ m.desc }}</span>
-            <span v-if="m.supportsReasoning" class="mtag r">推理</span>
+            <span v-if="m.isAuto" class="mtag auto">Auto</span>
+            <span v-else-if="m.supportsReasoning" class="mtag r">推理</span>
           </div>
         </div>
       </div>
@@ -99,7 +100,8 @@
             <span class="mcheck">{{ defaultModel===m.id ? '🔵' : '⚪' }}</span>
             <span class="mname">{{ m.name }}</span>
             <span class="mdesc">{{ m.desc }}</span>
-            <span v-if="m.recommended" class="mtag r">推荐</span>
+            <span v-if="m.isAuto" class="mtag auto">Auto</span>
+            <span v-else-if="m.recommended" class="mtag r">推荐</span>
           </div>
         </div>
       </div>
@@ -188,7 +190,7 @@ const detectDone = ref(false);
 const installed = ref({});
 const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
-const defaultModel = ref("glm-5.2");
+const defaultModel = ref("auto");
 const reasoningLevel = ref("max");
 const deepThinking = ref(true);
 const deploying = ref(false);
@@ -346,6 +348,7 @@ async function restartApp(platformKey) {
 .mdesc { font-size:11px; color:#999; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mtag { font-size:10px; padding:1px 4px; border-radius:4px; }
 .mtag.r { background:#f9f0ff; color:#722ed1; }
+.mtag.auto { background:#e6fffb; color:#0f8b8d; font-weight:600; }
 
 /* Reasoning */
 .reason-hint { background:#f0f5ff; border-radius:8px; padding:8px 12px; font-size:12px; color:#2f54eb; margin-bottom:10px; }

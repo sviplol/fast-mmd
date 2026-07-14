@@ -148,6 +148,23 @@
       </button>
     </div>
 
+    <!-- 更新内容弹窗 -->
+    <div v-if="changelogShow" class="changelog-overlay">
+      <div class="changelog-box">
+        <div class="changelog-header">
+          <span class="changelog-icon">🎉</span>
+          <h2>Fast MMD 更新到 v{{ appVersion }}</h2>
+        </div>
+        <div class="changelog-list">
+          <div v-for="(item, i) in (CHANGELOG[appVersion] || [])" :key="i" class="changelog-item">
+            <span class="changelog-dot">•</span>
+            <span>{{ item }}</span>
+          </div>
+        </div>
+        <button class="changelog-btn" @click="dismissChangelog">知道了，开始使用</button>
+      </div>
+    </div>
+
     <!-- 强制更新弹窗 -->
     <div v-if="updateInfo.show" class="update-overlay">
       <div class="update-box">
@@ -188,6 +205,28 @@ const confirmDialog = reactive({ show: false, title: "确认", msg: "", onOk: nu
 const updateInfo = reactive({ show: false, current: 0, latest: 0, url: "" });
 const appVersion = ref(0);
 const checkingUpdate = ref(false);
+const changelogShow = ref(false);
+
+const CHANGELOG = {
+  4: [
+    "新增 Auto 自动模式：根据任务难度智能分配模型，节省 Token",
+    "新增 Claude Code 支持：后端支持 Anthropic /v1/messages 端点",
+    "新增自检代理检测：自动检测系统代理并一键修复",
+    "新增更新内容弹窗：每次更新首次打开显示新功能",
+    "优化免安装版文件命名，更醒目易识别",
+    "Mac 版增加已损坏修复说明",
+  ],
+  3: [
+    "新增强制更新机制",
+    "新增消费记录和充值记录显示",
+    "优化余额显示精度",
+  ],
+  2: [
+    "新增6平台一键部署支持",
+    "新增卡号激活和账号登录",
+    "新增自检功能",
+  ],
+};
 
 function showConfirm(title, msg, onOk) {
   confirmDialog.show = true;
@@ -223,6 +262,14 @@ async function checkForUpdate() {
     const { invoke } = await import("@tauri-apps/api/core");
     const v = await invoke("get_app_version");
     appVersion.value = v;
+
+    // 检查是否需要显示更新内容弹窗
+    const saved = store.get();
+    const lastSeen = saved.lastSeenVersion || 0;
+    if (v > lastSeen && CHANGELOG[v]) {
+      changelogShow.value = true;
+    }
+
     const r = await invoke("check_update");
     if (r.has_update) {
       updateInfo.show = true;
@@ -233,6 +280,12 @@ async function checkForUpdate() {
   } catch(e) {
     // 非Tauri环境或请求失败，静默跳过
   }
+}
+
+function dismissChangelog() {
+  changelogShow.value = false;
+  const saved = store.get();
+  store.set({ ...saved, lastSeenVersion: appVersion.value });
 }
 
 // 手动检查更新
@@ -586,4 +639,17 @@ input, textarea, select { user-select:text; -webkit-user-select:text; -webkit-ap
 .version-check-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; }
 .version-check-btn:hover { background:rgba(255,255,255,.15); color:#fff; }
 .version-check-btn:disabled { opacity:.5; cursor:default; }
+
+/* 更新内容弹窗 */
+.changelog-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.6); z-index:999998; display:flex; align-items:center; justify-content:center; }
+.changelog-box { background:#fff; border-radius:20px; padding:32px 40px; width:420px; max-width:90vw; max-height:80vh; overflow-y:auto; box-shadow:0 12px 48px rgba(0,0,0,.3); }
+.changelog-header { text-align:center; margin-bottom:20px; }
+.changelog-icon { font-size:40px; display:block; margin-bottom:8px; }
+.changelog-header h2 { color:#2f54eb; font-size:20px; }
+.changelog-list { margin-bottom:24px; }
+.changelog-item { display:flex; align-items:flex-start; gap:8px; padding:8px 0; font-size:14px; color:#555; line-height:1.5; border-bottom:1px solid #f0f0f0; }
+.changelog-item:last-child { border-bottom:none; }
+.changelog-dot { color:#2f54eb; font-weight:bold; flex-shrink:0; }
+.changelog-btn { width:100%; height:44px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f54eb,#722ed1); color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(47,84,235,.3); }
+.changelog-btn:hover { box-shadow:0 6px 24px rgba(47,84,235,.4); transform:translateY(-1px); }
 </style>

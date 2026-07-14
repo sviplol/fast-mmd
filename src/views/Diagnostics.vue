@@ -92,6 +92,16 @@
       </div>
 
       <div v-if="fixResult" class="fix-toast" :class="fixResult.type">{{ fixResult.msg }}</div>
+
+      <!-- 重启提示弹窗 -->
+      <div v-if="rebootDialog" class="reboot-overlay" @click.self="rebootDialog=false">
+        <div class="reboot-box">
+          <div class="reboot-icon">🔄</div>
+          <h3>系统代理已清除</h3>
+          <p>请<b>重启电脑</b>后重新打开软件和 CodeBuddy/WorkBuddy，<br>即可正常连接服务器。</p>
+          <button class="reboot-btn" @click="rebootDialog=false">我知道了</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -164,8 +174,13 @@ async function fixOne(item) {
     if (window.__TAURI_INTERNALS__) {
       const { invoke } = await import("@tauri-apps/api/core");
       const r = await invoke("run_fix", { fixAction: item.fix_action });
-      item.status = "ok"; item.fixable = false; item.detail = "已修复: " + r;
-      showFix("✅ " + r, "success");
+      if (r === "PROXY_FIXED") {
+        item.status = "ok"; item.fixable = false; item.detail = "系统代理已清除";
+        showRebootDialog();
+      } else {
+        item.status = "ok"; item.fixable = false; item.detail = "已修复: " + r;
+        showFix("✅ " + r, "success");
+      }
     }
   } catch(e) { showFix("❌ " + e.message, "error"); }
   finally { fixing.value = false; }
@@ -174,18 +189,20 @@ async function fixOne(item) {
 async function fixAll() {
   fixing.value = true;
   const fixable = results.value.filter(r => r.fixable);
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, needReboot = false;
   for (const item of fixable) {
     try {
       if (window.__TAURI_INTERNALS__) {
         const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("run_fix", { fixAction: item.fix_action });
+        const r = await invoke("run_fix", { fixAction: item.fix_action });
+        if (r === "PROXY_FIXED") { needReboot = true; }
         item.status = "ok"; item.fixable = false; ok++;
       }
     } catch(e) { fail++; }
   }
   fixing.value = false;
-  showFix(`修复完成: 成功${ok} 失败${fail}`, ok > 0 ? "success" : "error");
+  if (needReboot) showRebootDialog();
+  else showFix(`修复完成: 成功${ok} 失败${fail}`, ok > 0 ? "success" : "error");
 }
 
 async function backupAll() {
@@ -267,6 +284,9 @@ function showFix(msg, type) {
   setTimeout(() => { fixResult.value = null; }, 3000);
 }
 
+const rebootDialog = ref(false);
+function showRebootDialog() { rebootDialog.value = true; }
+
 runDiagnostics();
 </script>
 
@@ -334,4 +354,11 @@ runDiagnostics();
 
 .fix-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:8px;color:#fff;font-size:13px;z-index:99999;}
 .fix-toast.success{background:#52c41a;} .fix-toast.error{background:#ff4d4f;}
+
+.reboot-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;}
+.reboot-box{background:#fff;border-radius:16px;padding:32px 40px;text-align:center;width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2);}
+.reboot-icon{font-size:48px;margin-bottom:12px;}
+.reboot-box h3{color:#333;font-size:18px;margin-bottom:8px;}
+.reboot-box p{color:#666;font-size:14px;line-height:1.6;margin-bottom:20px;}
+.reboot-btn{width:100%;height:44px;border:none;border-radius:10px;background:#2f54eb;color:#fff;font-size:15px;cursor:pointer;}
 </style>

@@ -4,6 +4,7 @@
  */
 
 export const ALL_MODELS = [
+  { id:"auto", name:"Auto", desc:"自动模式，根据任务难度智能分配模型，节省Token", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:64000, defaultReasoning:"high", recommended:true, isAuto:true },
   { id:"glm-5.2", name:"GLM-5.2", desc:"智谱最新旗舰，推理+视觉+工具调用", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:64000, defaultReasoning:"high", recommended:true },
   { id:"glm-5.1", name:"GLM-5.1", desc:"智谱上一代旗舰", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:128000, maxOutputTokens:32000, defaultReasoning:"high" },
   { id:"glm-5.0-turbo", name:"GLM-5.0 Turbo", desc:"快速响应版", type:"chat", supportsReasoning:false, supportsImages:true, supportsToolCall:true, maxInputTokens:128000, maxOutputTokens:16000, defaultReasoning:"none" },
@@ -23,6 +24,25 @@ export const ALL_MODELS = [
 export function buildModelConfig(model, reasoningLevels, deepThinking) {
   const levels = Array.isArray(reasoningLevels) ? reasoningLevels : [reasoningLevels];
   const hasReasoning = levels.filter(l => l !== "none");
+
+  // Auto 模型特殊处理
+  if (model.isAuto || model.id === "auto") {
+    return {
+      id: "auto",
+      name: "Auto",
+      supportsReasoning: true,
+      onlyReasoning: true,
+      reasoning: { effort: "high", summary: "auto", available: ["high","max"] },
+      supportsToolCall: true,
+      supportsImages: true,
+      maxInputTokens: 200000,
+      maxOutputTokens: 64000,
+      deepThinking: deepThinking,
+      isAuto: true,
+      desc: "自动模式，根据任务难度智能分配模型",
+    };
+  }
+
   const base = {
     id: model.id,
     name: model.name,
