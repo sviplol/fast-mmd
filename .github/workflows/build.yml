@@ -91,7 +91,9 @@ jobs:
           path: upload/
 
       - name: Upload to Lanzou Cloud
+        id: lanzou
         if: ${{ matrix.upload_lanzou }}
+        continue-on-error: true
         shell: bash
         env:
           YLOGIN: ${{ env.YLOGIN }}
@@ -99,4 +101,4 @@ jobs:
           FASTMODELS_FID: ${{ env.FASTMODELS_FID }}
           PYTHONUTF8: "1"
         run: |
-          python3 .github/scripts/lanzou_upload.py upload upload/
+          python3 .github/scripts/lanzou_upload.py upload upload/ 2>&1 || echo "::warning::Lanzou upload failed, artifact still available in GitHub Actions"
