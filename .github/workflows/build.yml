@@ -99,4 +99,4 @@ jobs:
           FASTMODELS_FID: ${{ env.FASTMODELS_FID }}
           PYTHONUTF8: "1"
         run: |
-          python3 .github/scripts/lanzou_upload.py upload/
+          python3 .github/scripts/lanzou_upload.py upload upload/
