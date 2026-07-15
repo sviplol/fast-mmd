@@ -289,7 +289,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
         models_map.insert(model_id.clone(), serde_json::json!({
             "name": model_name,
             "options": {
-                "reasoningEffort": to_wb_effort(&config.reasoning_level)
+                "reasoningEffort": config.reasoning_level
             },
             "attachment": true,
             "modalities": {"input": ["text", "image"]},
@@ -347,7 +347,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
                                 for model_id in &config.selected_model_ids {
                                     variants.insert(
                                         format!("antigravity:{}", model_id),
-                                        serde_json::json!(to_wb_effort(&config.reasoning_level)),
+                                        serde_json::json!(config.reasoning_level),
                                     );
                                 }
                             }
