@@ -22,6 +22,44 @@ fn to_anthropic_effort(level: &str) -> &str {
     to_wb_effort(level) // 同样的映射
 }
 
+/// 根据模型id返回WorkBuddy官方vendor标识(用于显示对应图标)
+/// e=智谱GLM, f=通用(DeepSeek/Kimi/MiniMax/auto), j=腾讯混元, tencent=腾讯
+fn to_wb_vendor(model_id: &str) -> &str {
+    if model_id.starts_with("glm-") || model_id.starts_with("glm5") {
+        "e"
+    } else if model_id == "auto" {
+        "f"
+    } else if model_id.starts_with("deepseek-") || model_id.starts_with("kimi-") || model_id.starts_with("minimax-") {
+        "f"
+    } else if model_id.starts_with("hy3") || model_id.starts_with("hunyuan") {
+        "j"
+    } else {
+        "f"
+    }
+}
+
+/// 根据模型id返回显示名称(跟官方一致)
+fn to_wb_display_name(model_id: &str) -> String {
+    match model_id {
+        "auto" => "自动模式（智能选择）".to_string(),
+        "glm-5.2" => "GLM-5.2".to_string(),
+        "glm-5.1" => "GLM-5.1".to_string(),
+        "glm-5.0-turbo" => "GLM-5.0 Turbo".to_string(),
+        "glm-5v-turbo" => "GLM-5V Turbo".to_string(),
+        "deepseek-v3" => "DeepSeek V3".to_string(),
+        "deepseek-r1" => "DeepSeek R1".to_string(),
+        "deepseek-v3.2" => "DeepSeek V3.2".to_string(),
+        "deepseek-v4-flash" => "DeepSeek V4 Flash".to_string(),
+        "deepseek-v4-pro" => "DeepSeek V4 Pro".to_string(),
+        "kimi-k2.7" => "Kimi K2.7".to_string(),
+        "kimi-k2.6" => "Kimi K2.6".to_string(),
+        "minimax-m2.7" => "MiniMax M2.7".to_string(),
+        "minimax-m3" => "MiniMax M3".to_string(),
+        "hy3-preview" => "HY3 Preview".to_string(),
+        _ => model_id.to_string(),
+    }
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
@@ -457,7 +495,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 
         serde_json::json!({
             "id": mid,
-            "name": mc.and_then(|c| c.get("name")).and_then(|v| v.as_str()).unwrap_or(mid),
+            "name": to_wb_display_name(mid),
             "vendor": "user",
             "url": cb_url,
             "apiKey": config.api_key,
@@ -468,8 +506,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "isDefault": i == 0,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto",
-                "available": ["low", "medium", "high", "xhigh"]
+                "summary": "auto"
             },
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
@@ -530,8 +567,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
         serde_json::json!({
             "id": mid,
-            "name": mid.as_str(),
-            "vendor": "Custom",
+            "name": to_wb_display_name(mid),
+            "vendor": to_wb_vendor(mid),
             "url": wb_url,
             "apiKey": config.api_key,
             "supportsToolCall": supports_tools,
@@ -540,9 +577,14 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "useCustomProtocol": false,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto",
-                "available": ["low", "medium", "high", "xhigh"]
-            }
+                "summary": "auto"
+            },
+            "relatedModels": {
+                "lite": mid,
+                "reasoning": mid
+            },
+            "tags": ["craft"],
+            "temperature": 1
         })
     }).collect();
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
@@ -554,7 +596,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
     }
 
-    // 构建要注入的 custom-local 模型列表
+    // 构建要注入的 custom-local 模型列表 (跟官方模型格式完全一致以获得图标)
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
@@ -563,11 +605,12 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
         let max_input = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000);
         let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
+        let display_name = to_wb_display_name(mid);
+        let vendor = to_wb_vendor(mid);
         serde_json::json!({
-            "disabled": false,
             "id": format!("custom-local:{}", mid),
-            "name": mid.as_str(),
-            "vendor": "Custom",
+            "name": display_name,
+            "vendor": vendor,
             "url": wb_url,
             "apiKey": config.api_key,
             "supportsToolCall": supports_tools,
@@ -581,11 +624,15 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "maxAllowedSize": max_input,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto",
-                "available": ["low", "medium", "high", "xhigh"]
+                "summary": "auto"
             },
-            "aliases": [mid],
-            "tags": ["custom"]
+            "relatedModels": {
+                "lite": mid,
+                "reasoning": mid
+            },
+            "tags": ["craft"],
+            "temperature": 1,
+            "aliases": [mid]
         })
     }).collect();
 
