@@ -208,6 +208,13 @@ const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
 const CHANGELOG = {
+  9: [
+    "彻底修复 WorkBuddy/CodeBuddy 自定义模型无法添加/保存后消失问题",
+    "models.json 格式从数组改为对象 {\"models\":[...]} (WorkBuddy Provider只认对象格式)",
+    "读取文件时自动去除 UTF-8 BOM 防止 JSON.parse 失败",
+    "vendor 统一为 user, tags 为 custom (WorkBuddy getModelsInfo 只认 user)",
+    "local_storage 不存在时自动创建目录和空 entry 文件 (不再报错)",
+  ],
   8: [
     "修复 WorkBuddy/CodeBuddy 问号消耗倍率图标（加 descriptionZh/credits/官方 reasoning 格式）",
     "WorkBuddy 官方模型保留，不再被覆盖",

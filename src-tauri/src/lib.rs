@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::fs;
 
+/// 读取JSON文件并去除UTF-8 BOM, 防止JSON.parse失败
+fn read_json_file(path: &Path) -> Option<serde_json::Value> {
+    let content = fs::read_to_string(path).ok()?;
+    let trimmed = if content.starts_with('\u{FEFF}') {
+        &content[3..]
+    } else {
+        &content
+    };
+    serde_json::from_str(trimmed).ok()
+}
+
 // 推理等级排序（从低到高）
 const REASONING_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -372,8 +383,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
     let config_path = oc_config_dir.join("opencode.json");
 
     let mut oc_config: serde_json::Value = if config_path.exists() {
-        fs::read_to_string(&config_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&config_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -481,8 +491,7 @@ fn deploy_claude_code(config: &DeployConfig) -> Result<String, String> {
     let settings_path = dir.join("settings.json");
 
     let mut settings: serde_json::Value = if settings_path.exists() {
-        fs::read_to_string(&settings_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&settings_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -586,8 +595,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 
     // 读取现有 models.json, 保留官方模型, 只替换 vendor=user 的模型
     let existing: serde_json::Value = if models_path.exists() {
-        fs::read_to_string(&models_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&models_path)
             .unwrap_or(serde_json::json!({"models": []}))
     } else {
         serde_json::json!({"models": []})
@@ -619,8 +627,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
     // 写入全局配置: settings.json (全局 reasoningEffort=xhigh + alwaysThinkingEnabled=true)
     let cb_settings_path = cb_dir.join("settings.json");
     let mut cb_settings: serde_json::Value = if cb_settings_path.exists() {
-        fs::read_to_string(&cb_settings_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&cb_settings_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -666,7 +673,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({
             "id": mid,
             "name": to_wb_display_name(mid),
-            "vendor": to_wb_vendor(mid),
+            "vendor": "user",
             "url": wb_url,
             "apiKey": config.api_key,
             "supportsToolCall": supports_tools,
@@ -683,20 +690,51 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "lite": mid,
                 "reasoning": mid
             },
-            "tags": ["craft"],
+            "tags": ["custom"],
             "temperature": 1,
             "descriptionEn": to_wb_description_en(mid),
             "descriptionZh": to_wb_description_zh(mid),
             "credits": to_wb_credits(mid)
         })
     }).collect();
-    fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
+    // models.json 必须是对象格式 {"models": [...]}, 不能是数组 (WorkBuddy Provider只认对象)
+    let models_json_obj = serde_json::json!({"models": models_json_entries});
+    fs::write(&models_path, serde_json::to_string_pretty(&models_json_obj).unwrap())
         .map_err(|e| format!("写入 models.json 失败: {}", e))?;
 
     // 写入 local_storage/entry_*.info (WorkBuddy 实际运行时读取的配置文件)
     let ls_dir = wb_dir.join("local_storage");
     if !ls_dir.exists() {
-        return Err("WorkBuddy local_storage 目录不存在, 请先启动一次 WorkBuddy".into());
+        // local_storage 不存在 = 用户从未启动过 WorkBuddy, 自动创建目录和空entry
+        fs::create_dir_all(&ls_dir).map_err(|e| format!("创建 local_storage 失败: {}", e))?;
+        let empty_entry = serde_json::json!([{
+            "userId": "launcher",
+            "data": {
+                "models": [],
+                "config": {},
+                "endpoint": {},
+                "featureToggles": {},
+                "agents": [],
+                "builtInMarketPlugins": [],
+                "builtInMarketplaces": [],
+                "builtInSkillMarketplaces": [],
+                "completion": {},
+                "integrations": {},
+                "links": [],
+                "modelPromotions": [],
+                "productFeatures": [],
+                "productFeatureExperiment": {},
+                "requestMaxStepLimit": {},
+                "telemetry": {},
+                "tokenUsageThresholds": {}
+            },
+            "ts": 0
+        }]);
+        let entry_name = format!("entry_{:x}.info", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+        let entry_path = ls_dir.join(&entry_name);
+        fs::write(&entry_path, serde_json::to_string(&empty_entry).unwrap_or_default())
+            .map_err(|e| format!("创建 entry 文件失败: {}", e))?;
     }
 
     // 构建要注入的 custom-local 模型列表 (跟官方模型格式完全一致以获得图标)
@@ -813,8 +851,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     // 写入全局配置: config.json (全局 reasoningEffort + alwaysThinkingEnabled)
     let config_path = wb_dir.join("config.json");
     let mut wb_config: serde_json::Value = if config_path.exists() {
-        fs::read_to_string(&config_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&config_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -828,8 +865,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     // 也写入 settings.json
     let settings_path = wb_dir.join("settings.json");
     let mut wb_settings: serde_json::Value = if settings_path.exists() {
-        fs::read_to_string(&settings_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&settings_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -1056,8 +1092,7 @@ fn deploy_trae(config: &DeployConfig) -> Result<String, String> {
 
     // 读取现有配置
     let mut settings: serde_json::Value = if settings_path.exists() {
-        fs::read_to_string(&settings_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&settings_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -1116,8 +1151,7 @@ fn deploy_claw_code(config: &DeployConfig) -> Result<String, String> {
     let config_path = claw_dir.join("openclaw.json");
 
     let mut claw_config: serde_json::Value = if config_path.exists() {
-        fs::read_to_string(&config_path).ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        read_json_file(&config_path)
             .unwrap_or(serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -2551,7 +2585,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 8;
+const APP_VERSION: u32 = 9;
 
 /// 获取当前软件版本号
 #[tauri::command]
