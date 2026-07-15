@@ -60,6 +60,48 @@ fn to_wb_display_name(model_id: &str) -> String {
     }
 }
 
+/// 根据模型id返回官方descriptionEn (跟官方entry完全一致)
+fn to_wb_description_en(model_id: &str) -> &'static str {
+    match model_id {
+        "auto" => "Balances quality and speed. Automatically selects the best model for each task, with a variable credit multiplier.",
+        "glm-5.2" => "1M context, built for long-horizon tasks.",
+        "glm-5.1" => "Previous generation flagship model.",
+        "glm-5.0-turbo" => "Fast response version.",
+        "glm-5v-turbo" => "Vision model, supports image understanding.",
+        "deepseek-v3" => "DeepSeek general chat model.",
+        "deepseek-r1" => "DeepSeek reasoning model, deep thinking.",
+        "deepseek-v3.2" => "DeepSeek V3 upgraded version.",
+        "deepseek-v4-flash" => "Fast version, low latency.",
+        "deepseek-v4-pro" => "DeepSeek flagship model, supporting 1M context window",
+        "kimi-k2.7" => "A multimodal model, good for daily use.",
+        "kimi-k2.6" => "Kimi previous version.",
+        "minimax-m2.7" => "MiniMax chat model.",
+        "minimax-m3" => "MiniMax latest version.",
+        "hy3-preview" => "HY3 preview version.",
+        _ => "",
+    }
+}
+
+/// 根据模型id返回官方credits字符串
+fn to_wb_credits(model_id: &str) -> &'static str {
+    match model_id {
+        "glm-5.2" => "x0.79",
+        "glm-5.1" => "x0.40",
+        "glm-5.0-turbo" => "x0.20",
+        "deepseek-v3" => "x0.16",
+        "deepseek-r1" => "x0.96",
+        "deepseek-v3.2" => "x0.32",
+        "deepseek-v4-flash" => "x0.32",
+        "deepseek-v4-pro" => "x0.96",
+        "kimi-k2.7" => "x0.57",
+        "kimi-k2.6" => "x0.29",
+        "minimax-m2.7" => "x0.07",
+        "minimax-m3" => "x0.14",
+        "hy3-preview" => "x0.10",
+        _ => "",
+    }
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
@@ -611,7 +653,9 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "reasoning": mid
             },
             "tags": ["craft"],
-            "temperature": 1
+            "temperature": 1,
+            "descriptionEn": to_wb_description_en(mid),
+            "credits": to_wb_credits(mid)
         })
     }).collect();
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
@@ -634,6 +678,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
         let display_name = to_wb_display_name(mid);
         let vendor = to_wb_vendor(mid);
+        let desc_en = to_wb_description_en(mid);
+        let credits = to_wb_credits(mid);
         serde_json::json!({
             "id": format!("custom-local:{}", mid),
             "name": display_name,
@@ -657,7 +703,9 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "reasoning": mid
             },
             "tags": ["craft"],
-            "temperature": 1
+            "temperature": 1,
+            "descriptionEn": desc_en,
+            "credits": credits
         })
     }).collect();
 
