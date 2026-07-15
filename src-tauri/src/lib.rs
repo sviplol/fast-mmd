@@ -5,6 +5,23 @@ use std::fs;
 // 推理等级排序（从低到高）
 const REASONING_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+/// 将内部推理等级映射到 WorkBuddy/CodeBuddy 支持的等级
+/// WorkBuddy/CodeBuddy 只支持 low/medium/high，不支持 xhigh/max
+fn to_wb_effort(level: &str) -> &str {
+    match level {
+        "none" | "minimal" => "low",
+        "low" => "low",
+        "medium" => "medium",
+        "high" | "xhigh" | "max" => "high",
+        _ => "high",
+    }
+}
+
+/// 将内部推理等级映射到 Claude Code/Anthropic 支持的等级
+fn to_anthropic_effort(level: &str) -> &str {
+    to_wb_effort(level) // 同样的映射
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
@@ -272,7 +289,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
         models_map.insert(model_id.clone(), serde_json::json!({
             "name": model_name,
             "options": {
-                "reasoningEffort": config.reasoning_level
+                "reasoningEffort": to_wb_effort(&config.reasoning_level)
             },
             "attachment": true,
             "modalities": {"input": ["text", "image"]},
@@ -330,7 +347,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
                                 for model_id in &config.selected_model_ids {
                                     variants.insert(
                                         format!("antigravity:{}", model_id),
-                                        serde_json::json!(config.reasoning_level),
+                                        serde_json::json!(to_wb_effort(&config.reasoning_level)),
                                     );
                                 }
                             }
@@ -394,8 +411,8 @@ fn deploy_claude_code(config: &DeployConfig) -> Result<String, String> {
         });
         obj.insert("env".to_string(), env);
 
-        // 推理等级 — 用最高的，同时写入可选列表
-        obj.insert("effortLevel".to_string(), serde_json::json!(highest));
+        // 推理等级 — 用最高的，映射到平台支持的值，同时写入可选列表
+        obj.insert("effortLevel".to_string(), serde_json::json!(to_anthropic_effort(&highest)));
         // 也写入可选等级列表，用户可手动切换
         obj.insert("availableEffortLevels".to_string(), serde_json::json!(levels));
 
@@ -450,9 +467,9 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "onlyReasoning": true,
             "isDefault": i == 0,
             "reasoning": {
-                "effort": "max",
+                "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto",
-                "available": ["max"]
+                "available": ["low", "medium", "high"]
             },
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
@@ -505,7 +522,12 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsToolCall": supports_tools,
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
-            "useCustomProtocol": false
+            "useCustomProtocol": false,
+            "reasoning": {
+                "effort": to_wb_effort(&config.reasoning_level),
+                "summary": "auto",
+                "available": ["low", "medium", "high"]
+            }
         })
     }).collect();
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_entries).unwrap())
@@ -536,11 +558,17 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsToolCall": supports_tools,
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
+            "onlyReasoning": supports_reasoning,
             "useCustomProtocol": false,
             "isDefault": i == 0,
             "maxInputTokens": max_input,
             "maxOutputTokens": max_output,
             "maxAllowedSize": max_input,
+            "reasoning": {
+                "effort": to_wb_effort(&config.reasoning_level),
+                "summary": "auto",
+                "available": ["low", "medium", "high"]
+            },
             "aliases": [mid],
             "tags": ["custom"]
         })
@@ -970,7 +998,7 @@ fn deploy_claw_code(config: &DeployConfig) -> Result<String, String> {
             }
             if let Some(defaults) = agents.get_mut("defaults").and_then(|v| v.as_object_mut()) {
                 defaults.insert("model".into(), serde_json::json!({"primary": format!("antigravity/{}", default_model)}));
-                defaults.insert("thinking".into(), serde_json::json!({"level": highest}));
+                defaults.insert("thinking".into(), serde_json::json!({"level": to_wb_effort(&highest)}));
             }
         }
     }
