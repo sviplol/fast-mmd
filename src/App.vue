@@ -208,6 +208,12 @@ const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
 const CHANGELOG = {
+  7: [
+    "修复 WorkBuddy/CodeBuddy 自定义模型保存后消失问题（去掉 useCustomProtocol/aliases 等不兼容字段）",
+    "修复 CodeBuddy 部署后官方模型消失问题（保留官方模型，只追加自定义模型）",
+    "自定义模型格式完全对齐官方（vendor图标+relatedModels+craft+temperature）",
+    "Auto 模型显示名改为「自动模式（智能选择）」",
+  ],
   6: [
     "推理等级永久拉满：WorkBuddy/CodeBuddy 全局 reasoningEffort=xhigh + alwaysThinkingEnabled=true",
     "部署时自动写入全局配置文件，无需手动 /config set",

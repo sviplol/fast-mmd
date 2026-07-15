@@ -514,7 +514,35 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         })
     }).collect();
 
-    let out = serde_json::json!({"models": new_models});
+    // 读取现有 models.json, 保留官方模型, 只替换 vendor=user 的模型
+    let existing: serde_json::Value = if models_path.exists() {
+        fs::read_to_string(&models_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({"models": []}))
+    } else {
+        serde_json::json!({"models": []})
+    };
+    let backup_path = cb_dir.join("models.json.launcher_bak");
+    if models_path.exists() {
+        let _ = fs::copy(&models_path, &backup_path);
+    }
+
+    // 分离官方模型和旧的自定义模型
+    let mut official_models: Vec<serde_json::Value> = Vec::new();
+    if let Some(models) = existing.get("models").and_then(|m| m.as_array()) {
+        for m in models {
+            let vendor = m.get("vendor").and_then(|v| v.as_str()).unwrap_or("");
+            if vendor != "user" {
+                official_models.push(m.clone());
+            }
+        }
+    }
+
+    // 合并: 官方模型 + 我们的自定义模型
+    let mut all_models = official_models;
+    all_models.extend(new_models);
+
+    let out = serde_json::json!({"models": all_models});
     fs::write(&models_path, serde_json::to_string_pretty(&out).unwrap())
         .map_err(|e| format!("写入失败: {}", e))?;
 
@@ -574,7 +602,6 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsToolCall": supports_tools,
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
-            "useCustomProtocol": false,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto"
@@ -617,7 +644,6 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsImages": true,
             "supportsReasoning": supports_reasoning,
             "onlyReasoning": supports_reasoning,
-            "useCustomProtocol": false,
             "isDefault": i == 0,
             "maxInputTokens": max_input,
             "maxOutputTokens": max_output,
@@ -631,8 +657,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "reasoning": mid
             },
             "tags": ["craft"],
-            "temperature": 1,
-            "aliases": [mid]
+            "temperature": 1
         })
     }).collect();
 
@@ -2441,7 +2466,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 6;
+const APP_VERSION: u32 = 7;
 
 /// 获取当前软件版本号
 #[tauri::command]
