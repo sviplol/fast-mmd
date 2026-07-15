@@ -102,6 +102,28 @@ fn to_wb_credits(model_id: &str) -> &'static str {
     }
 }
 
+/// 根据模型id返回中文描述 (用于WorkBuddy问号图标点击显示)
+fn to_wb_description_zh(model_id: &str) -> &'static str {
+    match model_id {
+        "auto" => "自动模式，根据任务难度智能分配模型，节省Token",
+        "glm-5.2" => "智谱最新旗舰，1M上下文，深度推理+视觉+工具调用",
+        "glm-5.1" => "智谱上一代旗舰模型",
+        "glm-5.0-turbo" => "快速响应版，适合日常任务",
+        "glm-5v-turbo" => "视觉模型，支持图片理解",
+        "deepseek-v3" => "DeepSeek 通用对话模型",
+        "deepseek-r1" => "DeepSeek 推理模型，深度思考",
+        "deepseek-v3.2" => "DeepSeek V3 升级版",
+        "deepseek-v4-flash" => "快速版，低延迟",
+        "deepseek-v4-pro" => "DeepSeek 专业版，支持1M上下文窗口",
+        "kimi-k2.7" => "月之暗面 Kimi 最新版，多模态",
+        "kimi-k2.6" => "Kimi 上一版本",
+        "minimax-m2.7" => "MiniMax 对话模型",
+        "minimax-m3" => "MiniMax 最新版",
+        "hy3-preview" => "腾讯混元HY3预览版，深度推理",
+        _ => "",
+    }
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
@@ -548,10 +570,16 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "isDefault": i == 0,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto"
+                "summary": "auto",
+                "canDisableThinking": false,
+                "defaultEffort": to_wb_effort(&config.reasoning_level),
+                "supportedEfforts": ["low", "medium", "high"]
             },
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
+            "descriptionEn": to_wb_description_en(mid),
+            "descriptionZh": to_wb_description_zh(mid),
+            "credits": to_wb_credits(mid),
             "deepThinking": true
         })
     }).collect();
@@ -646,7 +674,10 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsReasoning": supports_reasoning,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto"
+                "summary": "auto",
+                "canDisableThinking": false,
+                "defaultEffort": to_wb_effort(&config.reasoning_level),
+                "supportedEfforts": ["low", "medium", "high"]
             },
             "relatedModels": {
                 "lite": mid,
@@ -655,6 +686,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "tags": ["craft"],
             "temperature": 1,
             "descriptionEn": to_wb_description_en(mid),
+            "descriptionZh": to_wb_description_zh(mid),
             "credits": to_wb_credits(mid)
         })
     }).collect();
@@ -679,6 +711,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let display_name = to_wb_display_name(mid);
         let vendor = to_wb_vendor(mid);
         let desc_en = to_wb_description_en(mid);
+        let desc_zh = to_wb_description_zh(mid);
         let credits = to_wb_credits(mid);
         serde_json::json!({
             "id": format!("custom-local:{}", mid),
@@ -696,7 +729,10 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "maxAllowedSize": max_input,
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto"
+                "summary": "auto",
+                "canDisableThinking": false,
+                "defaultEffort": to_wb_effort(&config.reasoning_level),
+                "supportedEfforts": ["low", "medium", "high"]
             },
             "relatedModels": {
                 "lite": mid,
@@ -705,6 +741,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "tags": ["craft"],
             "temperature": 1,
             "descriptionEn": desc_en,
+            "descriptionZh": desc_zh,
             "credits": credits
         })
     }).collect();
@@ -2514,7 +2551,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 7;
+const APP_VERSION: u32 = 8;
 
 /// 获取当前软件版本号
 #[tauri::command]

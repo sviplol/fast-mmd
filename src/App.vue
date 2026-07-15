@@ -208,6 +208,11 @@ const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
 const CHANGELOG = {
+  8: [
+    "修复 WorkBuddy/CodeBuddy 问号消耗倍率图标（加 descriptionZh/credits/官方 reasoning 格式）",
+    "WorkBuddy 官方模型保留，不再被覆盖",
+    "CodeBuddy 官方模型保留（之前被覆盖只剩 HY3）",
+  ],
   7: [
     "修复 WorkBuddy/CodeBuddy 自定义模型保存后消失问题（去掉 useCustomProtocol/aliases 等不兼容字段）",
     "修复 CodeBuddy 部署后官方模型消失问题（保留官方模型，只追加自定义模型）",
