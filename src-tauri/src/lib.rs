@@ -469,7 +469,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto",
-                "available": ["low", "medium", "high"]
+                "available": ["low", "medium", "high", "xhigh"]
             },
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
@@ -481,7 +481,22 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
     fs::write(&models_path, serde_json::to_string_pretty(&out).unwrap())
         .map_err(|e| format!("写入失败: {}", e))?;
 
-    Ok(format!("CodeBuddy CN: {} 个模型已写入 ~/.codebuddy/models.json", config.selected_model_ids.len()))
+    // 写入全局配置: settings.json (全局 reasoningEffort=xhigh + alwaysThinkingEnabled=true)
+    let cb_settings_path = cb_dir.join("settings.json");
+    let mut cb_settings: serde_json::Value = if cb_settings_path.exists() {
+        fs::read_to_string(&cb_settings_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(obj) = cb_settings.as_object_mut() {
+        obj.insert("reasoningEffort".to_string(), serde_json::json!("xhigh"));
+        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(true));
+    }
+    let _ = fs::write(&cb_settings_path, serde_json::to_string_pretty(&cb_settings).unwrap_or_default());
+
+    Ok(format!("CodeBuddy CN: {} 个模型已写入 ~/.codebuddy/models.json + 全局配置 reasoningEffort=xhigh", config.selected_model_ids.len()))
 }
 
 /// WorkBuddy 部署: 写入 ~/.workbuddy/models.json
@@ -526,7 +541,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto",
-                "available": ["low", "medium", "high"]
+                "available": ["low", "medium", "high", "xhigh"]
             }
         })
     }).collect();
@@ -567,7 +582,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto",
-                "available": ["low", "medium", "high"]
+                "available": ["low", "medium", "high", "xhigh"]
             },
             "aliases": [mid],
             "tags": ["custom"]
@@ -638,7 +653,37 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     // 但上面已经处理了所有entry，这里只是确保不会遗漏
     let _ = find_workbuddy_entry(&ls_dir);
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 models.json + {} 个 entry 文件", config.selected_model_ids.len(), written_count))
+    // 写入全局配置: config.json (全局 reasoningEffort + alwaysThinkingEnabled)
+    let config_path = wb_dir.join("config.json");
+    let mut wb_config: serde_json::Value = if config_path.exists() {
+        fs::read_to_string(&config_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(obj) = wb_config.as_object_mut() {
+        obj.insert("reasoningEffort".to_string(), serde_json::json!("xhigh"));
+        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(true));
+    }
+    let _ = fs::write(&config_path, serde_json::to_string_pretty(&wb_config).unwrap_or_default());
+
+    // 也写入 settings.json
+    let settings_path = wb_dir.join("settings.json");
+    let mut wb_settings: serde_json::Value = if settings_path.exists() {
+        fs::read_to_string(&settings_path).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(obj) = wb_settings.as_object_mut() {
+        obj.insert("reasoningEffort".to_string(), serde_json::json!("xhigh"));
+        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(true));
+    }
+    let _ = fs::write(&settings_path, serde_json::to_string_pretty(&wb_settings).unwrap_or_default());
+
+    Ok(format!("WorkBuddy: {} 个模型已写入 models.json + {} 个 entry 文件 + 全局配置 reasoningEffort=xhigh", config.selected_model_ids.len(), written_count))
 }
 
 /// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
@@ -2349,7 +2394,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 4;
+const APP_VERSION: u32 = 6;
 
 /// 获取当前软件版本号
 #[tauri::command]

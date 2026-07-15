@@ -208,6 +208,15 @@ const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
 const CHANGELOG = {
+  6: [
+    "推理等级永久拉满：WorkBuddy/CodeBuddy 全局 reasoningEffort=xhigh + alwaysThinkingEnabled=true",
+    "部署时自动写入全局配置文件，无需手动 /config set",
+    "全模型 reasoning.available 增加 xhigh 档位",
+    "修复 OpenCode reasoningEffort 保持 max 不被降级",
+    "修复 WorkBuddy 新版 entry 格式部署（裸JSON+gzip双格式）",
+    "修复 isDefault 冲突：清除官方模型默认选中，强制选中我们的模型",
+    "全平台 maxInputTokens 对齐后端真实值（GLM-5.2=1M，Auto=1M）",
+  ],
   4: [
     "新增 Auto 自动模式：根据任务难度智能分配模型，节省 Token",
     "新增 Claude Code 支持：后端支持 Anthropic /v1/messages 端点",
