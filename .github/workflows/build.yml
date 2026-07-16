@@ -78,8 +78,34 @@ jobs:
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             cp src-tauri/target/release/fast-mmd.exe "upload/【推荐】Windows免安装版_v${{ steps.ver.outputs.version }}.exe"
           fi
-          # Mac M芯片额外打包修复脚本
-          if [ "${{ matrix.artifact_name }}" = "【Mac M芯片】一键部署" ]; then
+          # Mac: 清除隔离属性, 防止"已损坏"提示
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            echo "Clearing quarantine attributes..."
+            DMG_FILE="upload/$FILENAME"
+            # 方案1: 直接清除dmg文件的扩展属性
+            xattr -cr "$DMG_FILE"
+            # 方案2: 挂载dmg, 清除app属性, 创建新dmg
+            TEMP_DIR=$(mktemp -d)
+            MOUNT_POINT=$(hdiutil attach "$DMG_FILE" -nobrowse -quiet | tail -1 | awk '{$1=$2=$3=""; print substr($0,4)}')
+            if [ -n "$MOUNT_POINT" ]; then
+              APP_PATH=$(find "$MOUNT_POINT" -name "*.app" -maxdepth 2 | head -1)
+              if [ -n "$APP_PATH" ]; then
+                xattr -cr "$APP_PATH"
+                echo "Cleared xattr for: $APP_PATH"
+              fi
+              # 复制内容到临时目录, 重新打包dmg
+              cp -R "$MOUNT_POINT"/* "$TEMP_DIR/"
+              hdiutil detach "$MOUNT_POINT" -quiet
+              # 重新创建dmg (不带签名, 不带quarantine)
+              rm -f "$DMG_FILE"
+              hdiutil create -volname "FastMMD" -srcfolder "$TEMP_DIR" -ov -format UDZO "$DMG_FILE" -quiet
+              xattr -cr "$DMG_FILE"
+              echo "Rebuilt DMG without quarantine"
+              rm -rf "$TEMP_DIR"
+            fi
+          fi
+          # Mac M芯片和英特尔都打包修复脚本
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             cp mac-fix-damaged.command "upload/Mac已损坏修复.command"
           fi
           ls -la upload/

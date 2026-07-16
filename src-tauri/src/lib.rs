@@ -2585,7 +2585,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 9;
+const APP_VERSION: u32 = 10;
 
 /// 获取当前软件版本号
 #[tauri::command]
@@ -2640,12 +2640,41 @@ async fn check_update() -> Result<UpdateCheckResult, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // 单实例锁: 如果已有实例运行, 聚焦到已有窗口而不是启动新实例
             use tauri::Manager;
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-                let _ = w.unminimize();
+            let app_handle = app.clone();
+            let scheduled = app.run_on_main_thread(move || {
+                if let Some(w) = app_handle.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                    let _ = w.unminimize();
+                } else {
+                    // 窗口已销毁但进程仍在 — 重建主窗口
+                    use tauri::{WebviewUrl, WebviewWindowBuilder};
+                    match WebviewWindowBuilder::new(
+                        &app_handle, "main",
+                        WebviewUrl::App("index.html".into()),
+                    )
+                    .title("GLM API 平台登录器")
+                    .inner_size(900.0, 650.0)
+                    .resizable(true)
+                    .center()
+                    .min_inner_size(800.0, 600.0)
+                    .build()
+                    {
+                        Ok(w) => {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                        Err(e) => {
+                            eprintln!("重建窗口失败: {}, 退出旧进程释放互斥量", e);
+                            app_handle.exit(2);
+                        }
+                    }
+                }
+            });
+            if let Err(e) = scheduled {
+                eprintln!("调度窗口恢复失败: {}, 退出旧进程", e);
+                app.exit(2);
             }
         }))
         .plugin(tauri_plugin_shell::init())

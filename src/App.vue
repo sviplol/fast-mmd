@@ -208,6 +208,10 @@ const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
 const CHANGELOG = {
+  10: [
+    "修复双击打开没反应问题（窗口销毁后自动重建主窗口）",
+    "修复 Mac 安装提示「已损坏」问题（CI编译后自动清除隔离属性）",
+  ],
   9: [
     "彻底修复 WorkBuddy/CodeBuddy 自定义模型无法添加/保存后消失问题",
     "models.json 格式从数组改为对象 {\"models\":[...]} (WorkBuddy Provider只认对象格式)",
