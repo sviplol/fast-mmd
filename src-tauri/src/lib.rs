@@ -67,6 +67,7 @@ fn to_wb_display_name(model_id: &str) -> String {
         "minimax-m2.7" => "MiniMax M2.7".to_string(),
         "minimax-m3" => "MiniMax M3".to_string(),
         "hy3-preview" => "HY3 Preview".to_string(),
+        "kimi-k3" => "Kimi K3".to_string(),
         _ => model_id.to_string(),
     }
 }
@@ -89,6 +90,7 @@ fn to_wb_description_en(model_id: &str) -> &'static str {
         "minimax-m2.7" => "MiniMax chat model.",
         "minimax-m3" => "MiniMax latest version.",
         "hy3-preview" => "HY3 preview version.",
+        "kimi-k3" => "Kimi K3 flagship model with enhanced reasoning.",
         _ => "",
     }
 }
@@ -109,6 +111,7 @@ fn to_wb_credits(model_id: &str) -> &'static str {
         "minimax-m2.7" => "x0.07",
         "minimax-m3" => "x0.14",
         "hy3-preview" => "x0.10",
+        "kimi-k3" => "x0.57",
         _ => "",
     }
 }
@@ -131,6 +134,7 @@ fn to_wb_description_zh(model_id: &str) -> &'static str {
         "minimax-m2.7" => "MiniMax 对话模型",
         "minimax-m3" => "MiniMax 最新版",
         "hy3-preview" => "腾讯混元HY3预览版，深度推理",
+        "kimi-k3" => "月之暗面Kimi K3最新旗舰，增强推理",
         _ => "",
     }
 }
@@ -2585,7 +2589,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 10;
+const APP_VERSION: u32 = 11;
 
 /// 获取当前软件版本号
 #[tauri::command]

@@ -6,6 +6,7 @@
         <span v-if="balance!==null" class="bal">{{balance}}</span>
         <button @click="showRecharge=true">充值</button>
         <button @click="showDiag=true">自检</button>
+        <button @click="showGuide=true">教程</button>
         <button @click="showClear=true">清除部署</button>
         <button class="pri" @click="$emit('deploy')">部署</button>
         <button class="danger" @click="$emit('logout')">退出</button>
@@ -106,6 +107,32 @@
       </div>
     </div>
 
+    <!-- 教程弹窗 -->
+    <div v-if="showGuide" class="modal-bg" style="z-index:9998" @click.self="showGuide=false">
+      <div class="modal-box guide-box" @click.stop>
+        <div class="guide-header">
+          <h3>使用说明</h3>
+          <button class="guide-close" @click="showGuide=false">✕</button>
+        </div>
+        <div class="guide-tip">5 个教程都在本页，新手建议从"一键部署"开始。</div>
+        <div class="vg-grid">
+          <div v-for="(g, i) in guideVideos" :key="g.title" class="vg-card" :class="{featured: i===0}">
+            <div class="vg-head">
+              <span class="vg-step">{{ String(i+1).padStart(2,'0') }}</span>
+              <div class="vg-copy">
+                <div class="vg-title-row">
+                  <h2>{{ g.title }}</h2>
+                  <span v-if="g.tag" class="vg-tag">{{ g.tag }}</span>
+                </div>
+                <p>{{ g.desc }}</p>
+              </div>
+            </div>
+            <video class="vg-player" :src="g.url" controls preload="metadata" playsinline controlslist="nodownload"></video>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast -->
     <transition name="fade">
       <div v-if="toast.show" class="toast" :class="toast.type">{{ toast.msg }}</div>
@@ -127,6 +154,40 @@ const usage = ref({});
 const models = ref([]);
 const showRecharge = ref(false);
 const showDiag = ref(false);
+const showGuide = ref(false);
+
+const guideVideos = [
+  {
+    title: "一键部署",
+    tag: "新手必看 · 约 1 分钟",
+    desc: "第一次使用先看这里，从部署到可用约 1 分钟。",
+    url: "https://cloud.video.taobao.com/vod/NpXS-BJjCgHlZTDafPUrLCsm0TT7Fmn6CwDdzD5Luoc.mp4",
+  },
+  {
+    title: "卡密兑换",
+    tag: "",
+    desc: "学会把卡号兑换成 fm 开头的密钥，或给已有密钥充值。",
+    url: "https://cloud.video.taobao.com/vod/qSaVAc8UI4yNr3eN7-hw1I8IjV5I4uokXW8-Gspuw5E.mp4",
+  },
+  {
+    title: "添加更多模型",
+    tag: "",
+    desc: "需要使用更多 AI 模型时，看这里完成添加与配置。",
+    url: "https://cloud.video.taobao.com/vod/TekZcYGevT5C9Nv48r7KuYTu17WvIZ3PnLJYvTJ0Iek.mp4",
+  },
+  {
+    title: "查询积分、密钥与用量",
+    tag: "",
+    desc: "学会查询卡号、积分余额、fm 密钥和每次调用的用量。",
+    url: "https://cloud.video.taobao.com/vod/3UKa965CJzhoL-4qwTdMjSO0fEbxbHGvz_qyp8o1_90.mp4",
+  },
+  {
+    title: "积分充值",
+    tag: "",
+    desc: "积分不足时，按视频步骤快速完成充值。",
+    url: "https://cloud.video.taobao.com/vod/p64SNGt42czhEb2sPat_r29-DwMbBcXdB2O8x3_7qAg.mp4",
+  },
+];
 const showQR = ref(false);
 const showClear = ref(false);
 const rechargeCard = ref("");
@@ -304,4 +365,25 @@ pre { user-select:text; -webkit-user-select:text; }
 .clear-row { padding:6px 0; font-size:13px; }
 .clear-row label { cursor:pointer; display:flex; align-items:center; gap:6px; }
 .clear-row input { width:16px; height:16px; }
+
+/* 教程弹窗 - 完全复刻网站 /start/guide 样式 */
+.guide-box { width:720px; max-width:95vw; max-height:90vh; overflow:auto; padding:0; background:#fff; }
+.guide-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 0; }
+.guide-header h3 { margin:0; font-size:22px; font-weight:700; color:#1f1f1f; }
+.guide-close { background:none; border:none; font-size:22px; color:#999; cursor:pointer; }
+.guide-tip { padding:8px 24px 16px; font-size:13px; color:#8c8c8c; }
+
+.vg-grid { padding:0 24px 24px; display:flex; flex-direction:column; gap:16px; }
+.vg-card { background:#fff; border:1px solid #f0f0f0; border-radius:12px; overflow:hidden; }
+.vg-card.featured { border-color:#ffccc7; background:#fffafa; }
+.vg-head { display:flex; gap:14px; padding:16px 20px 12px; align-items:flex-start; }
+.vg-step { font-size:28px; font-weight:800; color:#e8e8e8; line-height:1; min-width:36px; }
+.vg-card.featured .vg-step { color:#cf1322; }
+.vg-copy { flex:1; min-width:0; }
+.vg-title-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.vg-title-row h2 { margin:0; font-size:17px; font-weight:700; color:#1f1f1f; }
+.vg-tag { font-size:11px; color:#cf1322; background:#fff1f0; border:1px solid #ffccc7; border-radius:4px; padding:2px 6px; font-weight:600; }
+.vg-copy p { margin:4px 0 0; font-size:13px; color:#8c8c8c; line-height:1.5; }
+.vg-player { display:block; width:100%; aspect-ratio:16/9; background:#000; border:none; }
+.vg-player::-webkit-media-controls-panel { background:rgba(0,0,0,.7); }
 </style>

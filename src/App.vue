@@ -26,6 +26,7 @@
         <hr style="border:none;border-top:1px solid rgba(255,255,255,.15);margin:20px 0" />
         <button class="query-btn" @click="doQueryDeploy" :disabled="queryLoading">{{ queryLoading ? '查询中...' : '🔍 部署查询' }}</button>
         <button class="query-btn" style="margin-top:8px" @click="showDiag = true">🔧 一键自检</button>
+        <button class="guide-entry-btn" @click="showGuide = true">📺 使用教程（视频版）</button>
       </div>
     </div>
 
@@ -128,6 +129,32 @@
     <!-- 自检弹窗 -->
     <Diagnostics v-if="showDiag" @close="showDiag = false" />
 
+    <!-- 教程弹窗（未登录也可用） -->
+    <div v-if="showGuide" class="modal-bg" style="z-index:9998" @click.self="showGuide=false">
+      <div class="modal-box guide-box" @click.stop>
+        <div class="guide-header">
+          <h3>使用说明</h3>
+          <button class="guide-close" @click="showGuide=false">✕</button>
+        </div>
+        <div class="guide-tip">5 个教程都在本页，新手建议从"一键部署"开始。</div>
+        <div class="vg-grid">
+          <div v-for="(g, i) in guideVideos" :key="g.title" class="vg-card" :class="{featured: i===0}">
+            <div class="vg-head">
+              <span class="vg-step">{{ String(i+1).padStart(2,'0') }}</span>
+              <div class="vg-copy">
+                <div class="vg-title-row">
+                  <h2>{{ g.title }}</h2>
+                  <span v-if="g.tag" class="vg-tag">{{ g.tag }}</span>
+                </div>
+                <p>{{ g.desc }}</p>
+              </div>
+            </div>
+            <video class="vg-player" :src="g.url" controls preload="metadata" playsinline controlslist="nodownload"></video>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 自定义确认弹窗 -->
     <div v-if="confirmDialog.show" class="confirm-overlay" @click.self="confirmDialog.onCancel">
       <div class="confirm-box" @click.stop>
@@ -199,6 +226,7 @@ const loading = ref(false);
 const queryLoading = ref(false);
 const queryResult = ref({});
 const showDiag = ref(false);
+const showGuide = ref(false);
 const prevStage = ref("activate");
 const toast = reactive({ show: false, msg: "", type: "info" });
 const confirmDialog = reactive({ show: false, title: "确认", msg: "", onOk: null, onCancel: null });
@@ -207,7 +235,44 @@ const appVersion = ref(0);
 const checkingUpdate = ref(false);
 const changelogShow = ref(false);
 
+const guideVideos = [
+  {
+    title: "一键部署",
+    tag: "新手必看 · 约 1 分钟",
+    desc: "第一次使用先看这里，从部署到可用约 1 分钟。",
+    url: "https://cloud.video.taobao.com/vod/NpXS-BJjCgHlZTDafPUrLCsm0TT7Fmn6CwDdzD5Luoc.mp4",
+  },
+  {
+    title: "卡密兑换",
+    tag: "",
+    desc: "学会把卡号兑换成 fm 开头的密钥，或给已有密钥充值。",
+    url: "https://cloud.video.taobao.com/vod/qSaVAc8UI4yNr3eN7-hw1I8IjV5I4uokXW8-Gspuw5E.mp4",
+  },
+  {
+    title: "添加更多模型",
+    tag: "",
+    desc: "需要使用更多 AI 模型时，看这里完成添加与配置。",
+    url: "https://cloud.video.taobao.com/vod/TekZcYGevT5C9Nv48r7KuYTu17WvIZ3PnLJYvTJ0Iek.mp4",
+  },
+  {
+    title: "查询积分、密钥与用量",
+    tag: "",
+    desc: "学会查询卡号、积分余额、fm 密钥和每次调用的用量。",
+    url: "https://cloud.video.taobao.com/vod/3UKa965CJzhoL-4qwTdMjSO0fEbxbHGvz_qyp8o1_90.mp4",
+  },
+  {
+    title: "积分充值",
+    tag: "",
+    desc: "积分不足时，按视频步骤快速完成充值。",
+    url: "https://cloud.video.taobao.com/vod/p64SNGt42czhEb2sPat_r29-DwMbBcXdB2O8x3_7qAg.mp4",
+  },
+];
+
 const CHANGELOG = {
+  11: [
+    "新增 Kimi K3 模型",
+    "新增使用教程页面（各平台接入配置+视频教程）",
+  ],
   10: [
     "修复双击打开没反应问题（窗口销毁后自动重建主窗口）",
     "修复 Mac 安装提示「已损坏」问题（CI编译后自动清除隔离属性）",
@@ -611,6 +676,31 @@ input, textarea, select { user-select:text; -webkit-user-select:text; -webkit-ap
 
 .query-btn { width:100%; height:38px; border:1px solid rgba(255,255,255,.4); border-radius:8px; background:transparent; color:rgba(255,255,255,.9); font-size:14px; cursor:pointer; }
 .query-btn:hover { background:rgba(255,255,255,.1); }
+
+/* 教程入口按钮 - 未登录页 */
+.guide-entry-btn { width:100%; height:42px; margin-top:12px; border:none; border-radius:10px; background:linear-gradient(135deg,#ff7a45,#ff4d4f); color:#fff; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(255,77,79,.3); }
+.guide-entry-btn:hover { box-shadow:0 6px 24px rgba(255,77,79,.4); transform:translateY(-1px); }
+
+/* 教程弹窗样式（App.vue 复用 MainApp.vue 的 guide 样式） */
+.modal-bg { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; }
+.guide-box { width:720px; max-width:95vw; max-height:90vh; overflow:auto; padding:0; background:#fff; border-radius:12px; }
+.guide-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 0; }
+.guide-header h3 { margin:0; font-size:22px; font-weight:700; color:#1f1f1f; }
+.guide-close { background:none; border:none; font-size:22px; color:#999; cursor:pointer; }
+.guide-tip { padding:8px 24px 16px; font-size:13px; color:#8c8c8c; }
+.vg-grid { padding:0 24px 24px; display:flex; flex-direction:column; gap:16px; }
+.vg-card { background:#fff; border:1px solid #f0f0f0; border-radius:12px; overflow:hidden; }
+.vg-card.featured { border-color:#ffccc7; background:#fffafa; }
+.vg-head { display:flex; gap:14px; padding:16px 20px 12px; align-items:flex-start; }
+.vg-step { font-size:28px; font-weight:800; color:#e8e8e8; line-height:1; min-width:36px; }
+.vg-card.featured .vg-step { color:#cf1322; }
+.vg-copy { flex:1; min-width:0; }
+.vg-title-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.vg-title-row h2 { margin:0; font-size:17px; font-weight:700; color:#1f1f1f; }
+.vg-tag { font-size:11px; color:#cf1322; background:#fff1f0; border:1px solid #ffccc7; border-radius:4px; padding:2px 6px; font-weight:600; }
+.vg-copy p { margin:4px 0 0; font-size:13px; color:#8c8c8c; line-height:1.5; }
+.vg-player { display:block; width:100%; aspect-ratio:16/9; background:#000; border:none; }
+.vg-player::-webkit-media-controls-panel { background:rgba(0,0,0,.7); }
 
 .ready-card { text-align:center; }
 .success-icon { font-size:48px; margin-bottom:8px; }

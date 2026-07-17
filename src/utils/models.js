@@ -19,6 +19,7 @@ export const ALL_MODELS = [
   { id:"minimax-m2.7", name:"MiniMax M2.7", desc:"MiniMax 对话模型", type:"chat", supportsReasoning:false, supportsImages:true, supportsToolCall:false, maxInputTokens:200000, maxOutputTokens:128000, defaultReasoning:"none" },
   { id:"minimax-m3", name:"MiniMax M3", desc:"MiniMax 最新版", type:"chat", supportsReasoning:false, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:512000, defaultReasoning:"none" },
   { id:"hy3-preview", name:"HY3 Preview", desc:"HY3 预览版", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:false, maxInputTokens:128000, maxOutputTokens:8192, defaultReasoning:"medium" },
+  { id:"kimi-k3", name:"Kimi K3", desc:"月之暗面 Kimi 最新旗舰", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:128000, defaultReasoning:"high", recommended:true },
 ];
 
 export function buildModelConfig(model, reasoningLevels, deepThinking) {
