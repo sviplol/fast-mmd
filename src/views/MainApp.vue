@@ -29,6 +29,20 @@
         </div>
       </div>
       <div v-if="tab==='usage'">
+        <!-- 卡密倒计时 -->
+        <div v-if="usage.quota_records && usage.quota_records.length" class="quota-section">
+          <div class="quota-title">⏳ 卡密倒计时</div>
+          <div v-for="(r,i) in usage.quota_records" :key="'q'+i" class="quota-row" :class="{expired: r.status==='expired'}">
+            <span v-if="r.status==='active'" class="q-active">
+              {{r.amount}}积分（剩{{r.remaining}}）
+              <span :style="{color: r.days_left<=3?'#ff4d4f':r.days_left<=7?'#faad14':'#8c8c8c'}">{{r.days_left}}天后到期</span>
+              · {{r.expire_date}}
+            </span>
+            <span v-else class="q-expired">
+              ✕ {{r.amount}}积分（已用{{r.used}}）已到期作废，扣除{{r.deducted}}积分 · {{r.expire_date}}
+            </span>
+          </div>
+        </div>
         <div v-if="usage.recharge_items && usage.recharge_items.length" class="recharge-list">
           <div class="recharge-list-title">📋 充值记录</div>
           <div v-for="(r,i) in usage.recharge_items" :key="'r'+i" class="recharge-row">
@@ -314,6 +328,14 @@ async function doClearDeploy() {
 .r-code { color:#333; flex:1; }
 .r-amount { min-width:60px; font-weight:600; }
 .r-time { color:#999; min-width:140px; }
+
+/* 卡密倒计时 */
+.quota-section { margin-bottom:16px; }
+.quota-title { font-size:13px; font-weight:600; color:#555; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #eee; }
+.quota-row { padding:8px 12px; background:#fff; border-radius:8px; margin-bottom:4px; font-size:13px; border:1px solid #f0f0f0; }
+.quota-row.expired { background:#fff2f0; border-color:#ffccc7; }
+.q-active { color:#333; }
+.q-expired { color:#ff4d4f; }
 
 .model-tags { display:flex; flex-wrap:wrap; gap:6px; }
 .model-tag { background:#fff; padding:4px 12px; border-radius:6px; font-size:13px; color:#2f54eb; border:1px solid #ddd; }
