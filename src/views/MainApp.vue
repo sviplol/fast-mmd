@@ -11,7 +11,7 @@
       </div>
       
       <button class="wb-sidebar-new" @click="$emit('deploy')">
-        <span class="wb-new-icon">+</span>
+        <img :src="logoIcon" class="wb-new-logo" alt="logo" />
         <span>一键部署</span>
       </button>
       
@@ -27,9 +27,9 @@
           <div class="wb-balance-label">余额({{unit}})</div>
           <div class="wb-balance-value">{{(balance||0).toFixed(2)}}</div>
         </div>
-        <button class="wb-sidebar-btn" @click="showRecharge=true">充值</button>
-        <button class="wb-sidebar-btn" @click="showDiag=true">自检</button>
-        <button class="wb-sidebar-btn" @click="showGuide=true">教程</button>
+        <button class="wb-sidebar-btn" @click="showRecharge=true"><span class="wb-btn-icon">💰</span>充值</button>
+        <button class="wb-sidebar-btn" @click="showDiag=true"><span class="wb-btn-icon">🔧</span>自检</button>
+        <button class="wb-sidebar-btn" @click="showGuide=true"><span class="wb-btn-icon">📺</span>教程</button>
         <button class="wb-sidebar-btn" @click="toggleTheme">{{ isDark ? '☀️ 白天' : '🌙 夜晚' }}</button>
         <button class="wb-sidebar-btn danger" @click="$emit('logout')">退出</button>
       </div>
@@ -109,6 +109,9 @@
           
           <div v-if="!usage.items||!usage.items.length" class="wb-empty">暂无消费记录</div>
           <div v-else class="wb-usage-list">
+            <div class="wb-usage-notice">
+              ℹ️ 仅显示最近 20 条消耗记录，历史记录已归档。如扣费异常请核对上方卡密倒计时。
+            </div>
             <div v-for="(item,i) in usage.items" :key="i" class="wb-usage-row">
               <span class="u-time">{{(item.created_at||'').replace('T',' ').replace('Z','')}}</span>
               <span class="u-model">{{item.model}}</span>
@@ -305,6 +308,9 @@ const clearReasoning = ref("");
 const platformLabels = { opencode:"OpenCode", claudecode:"Claude Code", codebuddy:"CodeBuddy CN", workbuddy:"WorkBuddy", clawcode:"Claw Code", trae:"Trae" };
 const toast = reactive({ show:false, msg:"", type:"info" });
 
+// 软件logo图标（引用Tauri图标资源）
+const logoIcon = "/icons/32x32.png";
+
 const baseUrl = computed(() => "https://" + props.serverPlatform + ".2bbb.cn/v1");
 const remaining = computed(() => usage.value.quota > 0 ? usage.value.quota - (usage.value.used||0) : (usage.value.balance||0));
 const unit = computed(() => props.serverPlatform === 'tk' ? 'Token' : '积分');
@@ -431,6 +437,7 @@ async function doClearDeploy() {
 .wb-sidebar-new { margin:16px; height:44px; border:none; border-radius:var(--wb-radius); background:var(--wb-primary); color:#fff; font-size:15px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all .2s; }
 .wb-sidebar-new:hover { background:var(--wb-primary-dark); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,180,42,.3); }
 .wb-new-icon { font-size:18px; font-weight:700; }
+.wb-new-logo { width:20px; height:20px; border-radius:4px; }
 
 .wb-sidebar-menu { flex:1; padding:0 8px; }
 .wb-menu-item { width:100%; height:44px; border:none; border-radius:var(--wb-radius); background:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:0 16px; margin-bottom:4px; transition:all .2s; color:var(--wb-text-secondary); }
@@ -443,10 +450,12 @@ async function doClearDeploy() {
 .wb-balance-card { background:var(--wb-primary-light); border-radius:var(--wb-radius); padding:12px; margin-bottom:12px; text-align:center; }
 .wb-balance-label { font-size:12px; color:var(--wb-text-secondary); margin-bottom:4px; }
 .wb-balance-value { font-size:20px; font-weight:700; color:var(--wb-primary); }
-.wb-sidebar-btn { width:100%; height:36px; border:1px solid var(--wb-border); border-radius:var(--wb-radius); background:var(--wb-card); color:var(--wb-text-secondary); font-size:13px; cursor:pointer; margin-bottom:6px; transition:all .2s; }
+.wb-sidebar-btn { width:100%; height:36px; border:1px solid var(--wb-border); border-radius:var(--wb-radius); background:var(--wb-card); color:var(--wb-text-secondary); font-size:13px; cursor:pointer; margin-bottom:6px; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:6px; }
 .wb-sidebar-btn:hover { border-color:var(--wb-primary); color:var(--wb-primary); }
 .wb-sidebar-btn.danger { color:#f53f3f; }
 .wb-sidebar-btn.danger:hover { border-color:#f53f3f; background:#fff2f0; }
+[data-theme="dark"] .wb-sidebar-btn.danger:hover { background:rgba(245,63,63,.15); }
+.wb-btn-icon { font-size:14px; }
 
 /* 右侧内容区 */
 .wb-content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
@@ -468,7 +477,9 @@ async function doClearDeploy() {
 .wb-stat-value { font-size:24px; font-weight:700; color:var(--wb-text); }
 .wb-stat-value.green { color:var(--wb-primary); }
 .wb-stat-value.red { color:#f53f3f; }
+[data-theme="dark"] .wb-stat-value.red { color:#ff7875; }
 .wb-stat-value.blue { color:#165dff; }
+[data-theme="dark"] .wb-stat-value.blue { color:#7b61ff; }
 
 /* 信息卡片 */
 .wb-info-card { background:var(--wb-card); border-radius:var(--wb-radius); padding:20px; box-shadow:var(--wb-shadow); }
@@ -482,22 +493,28 @@ async function doClearDeploy() {
 .wb-section-title { font-size:15px; font-weight:600; color:var(--wb-text); margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--wb-border); }
 .wb-quota-row { padding:12px 16px; background:var(--wb-card); border-radius:var(--wb-radius); margin-bottom:8px; font-size:14px; border:1px solid var(--wb-border); box-shadow:var(--wb-shadow); }
 .wb-quota-row.expired { background:#fff2f0; border-color:#ffccc7; }
+[data-theme="dark"] .wb-quota-row.expired { background:rgba(245,63,63,.15); border-color:rgba(245,63,63,.3); }
 .q-active { color:var(--wb-text); }
 .q-expired { color:#f53f3f; }
+[data-theme="dark"] .q-expired { color:#ff7875; }
 
 /* 充值记录 */
 .wb-recharge-section { margin-bottom:24px; }
 .wb-recharge-row { display:flex; gap:12px; padding:10px 16px; background:#f6ffed; border-radius:var(--wb-radius); margin-bottom:6px; font-size:13px; align-items:center; }
+[data-theme="dark"] .wb-recharge-row { background:rgba(0,180,42,.15); }
 .r-code { color:var(--wb-text); flex:1; cursor:pointer; }
 .r-amount { min-width:70px; font-weight:600; color:var(--wb-primary); }
 .r-time { color:var(--wb-text-tertiary); min-width:150px; }
 
 /* 消费记录 */
 .wb-usage-list { }
+.wb-usage-notice { background:#fff7e6; border:1px solid #ffd591; border-radius:var(--wb-radius); padding:12px 16px; margin-bottom:12px; font-size:13px; color:#d46b08; text-align:center; }
+[data-theme="dark"] .wb-usage-notice { background:rgba(255,169,64,.15); border-color:rgba(255,169,64,.3); color:#ffa940; }
 .wb-usage-row { display:flex; gap:12px; padding:10px 16px; background:var(--wb-card); border-radius:var(--wb-radius); margin-bottom:6px; font-size:13px; align-items:center; box-shadow:var(--wb-shadow); }
 .u-time { color:var(--wb-text-tertiary); min-width:150px; }
 .u-model { color:var(--wb-primary); min-width:110px; font-weight:600; }
 .u-cost { color:#f53f3f; min-width:70px; }
+[data-theme="dark"] .u-cost { color:#ff7875; }
 .u-tok { color:var(--wb-text-tertiary); }
 
 /* 充值页面 */
