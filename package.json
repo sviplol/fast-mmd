@@ -1,7 +1,7 @@
 {
   "name": "fast-mmd",
   "version": "1.0.0",
-  "description": "Fast MMD - AI API Platform Launcher",
+  "description": "AI全自动部署 - AI API Platform Launcher",
   "type": "module",
   "scripts": {
     "dev": "vite",

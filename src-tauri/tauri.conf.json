@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Fast MMD",
+  "productName": "AI全自动部署",
   "version": "1.0.0",
   "identifier": "cn.2bbb.fastmmd",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "GLM API 平台登录器",
+        "title": "AI全自动部署",
         "width": 900,
         "height": 650,
         "resizable": true,

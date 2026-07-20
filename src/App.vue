@@ -7,42 +7,48 @@
 
     <!-- 阶段1: 卡号激活（默认） -->
     <div v-if="stage==='activate'" class="screen activate-screen">
-      <div class="activate-card">
-        <h1>⚡ Fast MMD</h1>
-        <p>输入卡号，一键激活部署</p>
-        <select v-model="platform" class="big-input" style="margin-bottom:8px">
+      <div class="wb-login-card">
+        <div class="wb-logo">
+          <span class="wb-logo-icon">⚡</span>
+          <span class="wb-logo-text">AI全自动部署</span>
+        </div>
+        <p class="wb-slogan">你的 AI 部署超能力</p>
+        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
           <option value="glm">GLM 站 (glm.2bbb.cn) — 5200积分/20元</option>
           <option value="tk">TK 站 (tk.2bbb.cn) — Token计费</option>
         </select>
-        <input v-model="cardInput" class="big-input" placeholder="卡号 (5200-XXXX...)" @keydown.enter="doActivate" :disabled="loading" />
-        <button class="big-btn" @click="doActivate" :disabled="loading">{{ loading ? '验证中...' : '激 活' }}</button>
-        <div class="links">
+        <input v-model="cardInput" class="wb-input" :placeholder="platform==='tk' ? '卡号 (666-XXXX...)' : '卡号 (5200-XXXX...)'" @keydown.enter="doActivate" :disabled="loading" />
+        <button class="wb-btn-primary" @click="doActivate" :disabled="loading">{{ loading ? '验证中...' : '激 活' }}</button>
+        <div class="wb-links">
           <a @click="stage='login'">账号登录</a>
           <span>·</span>
           <a @click="stage='register'">注册账号</a>
           <span>·</span>
           <a @click="openShop">购买卡号</a>
         </div>
-        <hr style="border:none;border-top:1px solid rgba(255,255,255,.15);margin:20px 0" />
-        <button class="query-btn" @click="doQueryDeploy" :disabled="queryLoading">{{ queryLoading ? '查询中...' : '🔍 部署查询' }}</button>
-        <button class="query-btn" style="margin-top:8px" @click="showDiag = true">🔧 一键自检</button>
-        <button class="guide-entry-btn" @click="showGuide = true">📺 使用教程（视频版）</button>
+        <div class="wb-divider"></div>
+        <button class="wb-btn-secondary" @click="doQueryDeploy" :disabled="queryLoading">{{ queryLoading ? '查询中...' : '🔍 部署查询' }}</button>
+        <button class="wb-btn-secondary" style="margin-top:10px" @click="showDiag = true">🔧 一键自检</button>
+        <button class="wb-btn-guide" @click="showGuide = true">📺 使用教程（视频版）</button>
       </div>
     </div>
 
     <!-- 阶段2: 账号登录 -->
-    <div v-else-if="stage==='login'" class="screen login-screen">
-      <div class="activate-card">
-        <h1>⚡ Fast MMD</h1>
-        <p>账号登录</p>
-        <select v-model="platform" class="big-input" style="margin-bottom:8px">
+    <div v-else-if="stage==='login'" class="screen activate-screen">
+      <div class="wb-login-card">
+        <div class="wb-logo">
+          <span class="wb-logo-icon">⚡</span>
+          <span class="wb-logo-text">AI全自动部署</span>
+        </div>
+        <p class="wb-slogan">账号登录</p>
+        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
           <option value="glm">GLM 站 (glm.2bbb.cn)</option>
           <option value="tk">TK 站 (tk.2bbb.cn)</option>
         </select>
-        <input v-model="username" class="big-input" placeholder="用户名" style="margin-bottom:8px" @keydown.enter="doLogin" />
-        <input v-model="password" type="password" class="big-input" placeholder="密码" style="margin-bottom:8px" @keydown.enter="doLogin" />
-        <button class="big-btn" @click="doLogin" :disabled="loading">{{ loading ? '登录中...' : '登 录' }}</button>
-        <div class="links">
+        <input v-model="username" class="wb-input" placeholder="用户名" style="margin-bottom:12px" @keydown.enter="doLogin" />
+        <input v-model="password" type="password" class="wb-input" placeholder="密码" style="margin-bottom:12px" @keydown.enter="doLogin" />
+        <button class="wb-btn-primary" @click="doLogin" :disabled="loading">{{ loading ? '登录中...' : '登 录' }}</button>
+        <div class="wb-links">
           <a @click="stage='register'">注册新账号</a>
           <span>·</span>
           <a @click="stage='activate'">← 卡号激活</a>
@@ -51,19 +57,22 @@
     </div>
 
     <!-- 阶段2b: 注册 -->
-    <div v-else-if="stage==='register'" class="screen login-screen">
-      <div class="activate-card">
-        <h1>⚡ Fast MMD</h1>
-        <p>注册新账号</p>
-        <select v-model="platform" class="big-input" style="margin-bottom:8px">
+    <div v-else-if="stage==='register'" class="screen activate-screen">
+      <div class="wb-login-card">
+        <div class="wb-logo">
+          <span class="wb-logo-icon">⚡</span>
+          <span class="wb-logo-text">AI全自动部署</span>
+        </div>
+        <p class="wb-slogan">注册新账号</p>
+        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
           <option value="glm">GLM 站 (glm.2bbb.cn)</option>
           <option value="tk">TK 站 (tk.2bbb.cn)</option>
         </select>
-        <input v-model="username" class="big-input" placeholder="用户名 (3-20位)" style="margin-bottom:8px" />
-        <input v-model="password" type="password" class="big-input" placeholder="密码 (6位以上)" style="margin-bottom:8px" />
-        <input v-model="password2" type="password" class="big-input" placeholder="确认密码" style="margin-bottom:8px" @keydown.enter="doRegister" />
-        <button class="big-btn" @click="doRegister" :disabled="loading">{{ loading ? '注册中...' : '注 册' }}</button>
-        <div class="links">
+        <input v-model="username" class="wb-input" placeholder="用户名 (3-20位)" style="margin-bottom:12px" />
+        <input v-model="password" type="password" class="wb-input" placeholder="密码 (6位以上)" style="margin-bottom:12px" />
+        <input v-model="password2" type="password" class="wb-input" placeholder="确认密码" style="margin-bottom:12px" @keydown.enter="doRegister" />
+        <button class="wb-btn-primary" @click="doRegister" :disabled="loading">{{ loading ? '注册中...' : '注 册' }}</button>
+        <div class="wb-links">
           <a @click="stage='login'">← 已有账号，去登录</a>
           <span>·</span>
           <a @click="stage='activate'">← 卡号激活</a>
@@ -73,12 +82,12 @@
 
     <!-- 阶段3: 一键部署按钮 -->
     <div v-else-if="stage==='ready'" class="screen ready-screen">
-      <div class="ready-card">
-        <div class="success-icon">✅</div>
-        <h1>{{ readyTitle }}</h1>
-        <p class="balance-text">余额: <b>{{ balance.toFixed(2) }}</b> {{ platform==='tk' ? 'token' : '积分' }}</p>
-        <button class="deploy-btn" @click="stage='wizard'">🚀 一键部署</button>
-        <button class="skip-btn" @click="confirmSkip">跳过，直接进入</button>
+      <div class="wb-ready-card">
+        <div class="wb-ready-icon">✅</div>
+        <h1 class="wb-ready-title">{{ readyTitle }}</h1>
+        <p class="wb-ready-balance">余额: <b>{{ balance.toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}</p>
+        <button class="wb-btn-deploy" @click="stage='wizard'">🚀 一键部署</button>
+        <button class="wb-btn-skip" @click="confirmSkip">跳过，直接进入</button>
       </div>
     </div>
 
@@ -90,38 +99,38 @@
 
     <!-- 阶段1b: 部署查询结果 -->
     <div v-else-if="stage==='query'" class="screen ready-screen">
-      <div class="query-card">
+      <div class="wb-query-card">
         <h2>🔍 部署查询结果</h2>
-        <div v-if="queryResult.installedPlatforms && queryResult.installedPlatforms.length > 0" class="query-section">
-          <div class="query-section-title">已安装的平台：</div>
-          <div v-for="p in queryResult.installedPlatforms" :key="p.platform" class="query-row">
+        <div v-if="queryResult.installedPlatforms && queryResult.installedPlatforms.length > 0" class="wb-query-section">
+          <div class="wb-query-section-title">已安装的平台：</div>
+          <div v-for="p in queryResult.installedPlatforms" :key="p.platform" class="wb-query-row">
             <span class="q-icon">{{ p.icon }}</span>
             <span class="q-name">{{ p.name }}</span>
             <span v-if="p.deployed" class="q-status ok">✅ 已部署</span>
             <span v-else class="q-status fail">❌ 未部署</span>
           </div>
         </div>
-        <div v-else class="query-empty">未检测到任何已安装的平台<br><a @click="openDownloadLinks" style="color:#2f54eb;cursor:pointer">查看平台下载地址</a></div>
+        <div v-else class="wb-query-empty">未检测到任何已安装的平台<br><a @click="openDownloadLinks" style="color:#00b42a;cursor:pointer">查看平台下载地址</a></div>
 
-        <div v-if="queryResult.apiKey" class="query-section">
-          <div class="query-section-title">检测到的 API Key：</div>
-          <div class="query-key-box">
+        <div v-if="queryResult.apiKey" class="wb-query-section">
+          <div class="wb-query-section-title">检测到的 API Key：</div>
+          <div class="wb-query-key-box">
             <code>{{ queryResult.apiKey?.slice(0, 30) }}...</code>
-            <button class="copy-mini" @click="copyText(queryResult.apiKey)">📋</button>
+            <button class="wb-copy-mini" @click="copyText(queryResult.apiKey)">📋</button>
           </div>
-          <div v-if="queryResult.balance !== null && queryResult.balance !== undefined" class="query-balance">
-            剩余: <b>{{ Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'token' : '积分' }}
+          <div v-if="queryResult.balance !== null && queryResult.balance !== undefined" class="wb-query-balance">
+            剩余: <b>{{ Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}
           </div>
         </div>
 
-        <div v-if="queryResult.needDeploy" class="query-warn">
+        <div v-if="queryResult.needDeploy" class="wb-query-warn">
           ⚠️ 检测到已安装平台但未部署配置<br>请先激活卡号后部署
-          <div style="margin-top:8px"><button class="big-btn" style="width:auto;padding:6px 20px" @click="stage='activate'">去激活</button></div>
+          <div style="margin-top:8px"><button class="wb-btn-primary" style="width:auto;padding:8px 24px" @click="stage='activate'">去激活</button></div>
         </div>
 
-        <div class="query-actions">
-          <button v-if="queryResult.apiKey" class="big-btn" @click="enterWithKey">使用此 Key 进入</button>
-          <button class="query-back" @click="backFromQuery">← 返回</button>
+        <div class="wb-query-actions">
+          <button v-if="queryResult.apiKey" class="wb-btn-primary" @click="enterWithKey">使用此 Key 进入</button>
+          <button class="wb-btn-back" @click="backFromQuery">← 返回</button>
         </div>
       </div>
     </div>
@@ -130,11 +139,11 @@
     <Diagnostics v-if="showDiag" @close="showDiag = false" />
 
     <!-- 教程弹窗（未登录也可用） -->
-    <div v-if="showGuide" class="modal-bg" style="z-index:9998" @click.self="showGuide=false">
-      <div class="modal-box guide-box" @click.stop>
-        <div class="guide-header">
+    <div v-if="showGuide" class="wb-modal-overlay" @click.self="showGuide=false">
+      <div class="wb-modal guide-modal" @click.stop>
+        <div class="wb-modal-header">
           <h3>使用说明</h3>
-          <button class="guide-close" @click="showGuide=false">✕</button>
+          <button class="wb-modal-close" @click="showGuide=false">✕</button>
         </div>
         <div class="guide-tip">5 个教程都在本页，新手建议从"一键部署"开始。</div>
         <div class="vg-grid">
@@ -156,13 +165,13 @@
     </div>
 
     <!-- 自定义确认弹窗 -->
-    <div v-if="confirmDialog.show" class="confirm-overlay" @click.self="confirmDialog.onCancel">
-      <div class="confirm-box" @click.stop>
+    <div v-if="confirmDialog.show" class="wb-modal-overlay" @click.self="confirmDialog.onCancel">
+      <div class="wb-modal confirm-modal" @click.stop>
         <div class="confirm-title">{{ confirmDialog.title }}</div>
         <div class="confirm-msg">{{ confirmDialog.msg }}</div>
         <div class="confirm-btns">
-          <button class="confirm-cancel" @click="confirmDialog.onCancel">取消</button>
-          <button class="confirm-ok" @click="confirmDialog.onOk">确定</button>
+          <button class="wb-btn-cancel" @click="confirmDialog.onCancel">取消</button>
+          <button class="wb-btn-ok" @click="confirmDialog.onOk">确定</button>
         </div>
       </div>
     </div>
@@ -176,11 +185,11 @@
     </div>
 
     <!-- 更新内容弹窗 -->
-    <div v-if="changelogShow" class="changelog-overlay">
-      <div class="changelog-box">
+    <div v-if="changelogShow" class="wb-modal-overlay">
+      <div class="wb-modal changelog-modal">
         <div class="changelog-header">
           <span class="changelog-icon">🎉</span>
-          <h2>Fast MMD 更新到 v{{ appVersion }}</h2>
+          <h2>AI全自动部署 更新到 v{{ appVersion }}</h2>
         </div>
         <div class="changelog-list">
           <div v-for="(item, i) in (CHANGELOG[appVersion] || [])" :key="i" class="changelog-item">
@@ -188,18 +197,18 @@
             <span>{{ item }}</span>
           </div>
         </div>
-        <button class="changelog-btn" @click="dismissChangelog">知道了，开始使用</button>
+        <button class="wb-btn-primary" @click="dismissChangelog">知道了，开始使用</button>
       </div>
     </div>
 
     <!-- 强制更新弹窗 -->
-    <div v-if="updateInfo.show" class="update-overlay">
-      <div class="update-box">
+    <div v-if="updateInfo.show" class="wb-modal-overlay">
+      <div class="wb-modal update-modal">
         <div class="update-icon">🔄</div>
         <h2>发现新版本 v{{ updateInfo.latest }}</h2>
         <p class="update-msg">检测到新版本已发布，请下载最新版本使用</p>
         <p class="update-version">当前版本 v{{ updateInfo.current }} → 最新版本 v{{ updateInfo.latest }}</p>
-        <button class="update-btn" @click="goDownload">📥 立即下载新版本</button>
+        <button class="wb-btn-primary" @click="goDownload">📥 立即下载新版本</button>
       </div>
     </div>
 
@@ -210,11 +219,11 @@
     </button>
 
     <!-- 客服二维码弹窗 -->
-    <div v-if="showQR" class="qr-overlay" @click.self="showQR = false">
-      <div class="qr-modal" @click.stop>
-        <div class="qr-modal-header">
+    <div v-if="showQR" class="wb-modal-overlay" @click.self="showQR = false">
+      <div class="wb-modal qr-modal" @click.stop>
+        <div class="wb-modal-header">
           <span>联系客服</span>
-          <button class="qr-modal-close" @click="showQR = false">✕</button>
+          <button class="wb-modal-close" @click="showQR = false">✕</button>
         </div>
         <div class="qr-modal-body">
           <img :src="qrImg" class="qr-modal-img" alt="客服二维码" />
@@ -279,15 +288,15 @@ const guideVideos = [
     url: "https://cloud.video.taobao.com/vod/TekZcYGevT5C9Nv48r7KuYTu17WvIZ3PnLJYvTJ0Iek.mp4",
   },
   {
-    title: "查询积分、密钥与用量",
+    title: "查询余额、密钥与用量",
     tag: "",
-    desc: "学会查询卡号、积分余额、fm 密钥和每次调用的用量。",
+    desc: "学会查询卡号、余额、fm 密钥和每次调用的用量。",
     url: "https://cloud.video.taobao.com/vod/3UKa965CJzhoL-4qwTdMjSO0fEbxbHGvz_qyp8o1_90.mp4",
   },
   {
-    title: "积分充值",
+    title: "余额充值",
     tag: "",
-    desc: "积分不足时，按视频步骤快速完成充值。",
+    desc: "余额不足时，按视频步骤快速完成充值。",
     url: "https://cloud.video.taobao.com/vod/p64SNGt42czhEb2sPat_r29-DwMbBcXdB2O8x3_7qAg.mp4",
   },
 ];
@@ -676,149 +685,163 @@ try {
 
 // 启动时检测更新
 checkForUpdate();
-</script>
+</script>\n\n<style>
+/* ===== WorkBuddy 设计系统 ===== */
+:root {
+  --wb-primary: #00b42a;
+  --wb-primary-dark: #009a24;
+  --wb-primary-light: #e8f7ea;
+  --wb-bg: #f7f8fa;
+  --wb-card: #ffffff;
+  --wb-text: #1d2129;
+  --wb-text-secondary: #4e5969;
+  --wb-text-tertiary: #86909c;
+  --wb-border: #e5e6eb;
+  --wb-radius: 12px;
+  --wb-radius-lg: 16px;
+  --wb-shadow: 0 2px 8px rgba(0,0,0,.04);
+  --wb-shadow-lg: 0 8px 24px rgba(0,0,0,.08);
+}
 
-<style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:"Segoe UI","Microsoft YaHei",sans-serif; overflow:hidden; user-select:none; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; overflow:hidden; user-select:none; }
 input, textarea, select { user-select:text; -webkit-user-select:text; -webkit-app-region:none; }
-.app { width:100vw; height:100vh; overflow:hidden; }
+.app { width:100vw; height:100vh; overflow:hidden; background:var(--wb-bg); }
 .screen { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
 
 /* Toast */
-.toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; border-radius:8px; color:#fff; font-size:14px; z-index:99999; box-shadow:0 4px 12px rgba(0,0,0,.2); }
-.toast.info { background:#2f54eb; }
-.toast.success { background:#52c41a; }
-.toast.error { background:#ff4d4f; }
+.toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; border-radius:8px; color:#fff; font-size:14px; z-index:99999; box-shadow:var(--wb-shadow-lg); }
+.toast.info { background:#165dff; }
+.toast.success { background:var(--wb-primary); }
+.toast.error { background:#f53f3f; }
 .fade-enter-active, .fade-leave-active { transition:opacity .3s; }
+.fade-enter-from, .fade-leave-to { opacity:0; }
 
-.activate-card { width:360px; text-align:center; }
-.activate-card h1 { color:#fff; font-size:28px; margin-bottom:4px; }
-.activate-card p { color:rgba(255,255,255,.7); font-size:13px; margin-bottom:20px; }
-.big-input { width:100%; height:44px; border:2px solid rgba(255,255,255,.3); border-radius:10px; padding:0 16px; font-size:15px; outline:none; background:rgba(255,255,255,.1); color:#fff; }
-.big-input::placeholder { color:rgba(255,255,255,.5); }
-.big-input:focus { border-color:#fff; background:rgba(255,255,255,.15); }
-.big-input option { color:#333; }
-.big-btn { width:100%; height:44px; border:none; border-radius:10px; background:#fff; color:#2f54eb; font-size:16px; font-weight:600; cursor:pointer; margin-top:12px; }
-.big-btn:disabled { opacity:.6; }
-.links { margin-top:16px; font-size:13px; }
-.links a { color:rgba(255,255,255,.8); cursor:pointer; }
-.links a:hover { color:#fff; }
-.links span { margin:0 8px; color:rgba(255,255,255,.3); }
+/* ===== 登录/激活页 ===== */
+.activate-screen { background:linear-gradient(180deg,#f0f9f1 0%,#e8f5e9 50%,#f7f8fa 100%); }
+.wb-login-card { width:400px; background:var(--wb-card); border-radius:var(--wb-radius-lg); padding:40px; box-shadow:var(--wb-shadow-lg); text-align:center; }
+.wb-logo { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px; }
+.wb-logo-icon { font-size:32px; }
+.wb-logo-text { font-size:28px; font-weight:800; color:var(--wb-text); letter-spacing:-0.5px; }
+.wb-slogan { color:var(--wb-text-tertiary); font-size:14px; margin-bottom:28px; }
+.wb-input { width:100%; height:48px; border:1.5px solid var(--wb-border); border-radius:var(--wb-radius); padding:0 16px; font-size:15px; outline:none; background:var(--wb-card); color:var(--wb-text); transition:border-color .2s; }
+.wb-input::placeholder { color:var(--wb-text-tertiary); }
+.wb-input:focus { border-color:var(--wb-primary); }
+.wb-input option { color:var(--wb-text); }
+.wb-btn-primary { width:100%; height:48px; border:none; border-radius:var(--wb-radius); background:var(--wb-primary); color:#fff; font-size:16px; font-weight:600; cursor:pointer; margin-top:16px; transition:all .2s; }
+.wb-btn-primary:hover { background:var(--wb-primary-dark); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,180,42,.3); }
+.wb-btn-primary:disabled { opacity:.6; cursor:default; transform:none; box-shadow:none; }
+.wb-btn-secondary { width:100%; height:44px; border:1.5px solid var(--wb-border); border-radius:var(--wb-radius); background:var(--wb-card); color:var(--wb-text-secondary); font-size:14px; cursor:pointer; transition:all .2s; }
+.wb-btn-secondary:hover { border-color:var(--wb-primary); color:var(--wb-primary); }
+.wb-btn-guide { width:100%; height:44px; margin-top:12px; border:none; border-radius:var(--wb-radius); background:linear-gradient(135deg,#ff7a45,#f53f3f); color:#fff; font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; }
+.wb-btn-guide:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(245,63,63,.3); }
+.wb-links { margin-top:20px; font-size:13px; }
+.wb-links a { color:var(--wb-text-tertiary); cursor:pointer; transition:color .2s; }
+.wb-links a:hover { color:var(--wb-primary); }
+.wb-links span { margin:0 10px; color:var(--wb-border); }
+.wb-divider { height:1px; background:var(--wb-border); margin:24px 0; }
 
-.query-btn { width:100%; height:38px; border:1px solid rgba(255,255,255,.4); border-radius:8px; background:transparent; color:rgba(255,255,255,.9); font-size:14px; cursor:pointer; }
-.query-btn:hover { background:rgba(255,255,255,.1); }
+/* ===== 就绪页 ===== */
+.ready-screen { background:var(--wb-bg); }
+.wb-ready-card { text-align:center; background:var(--wb-card); border-radius:var(--wb-radius-lg); padding:48px; box-shadow:var(--wb-shadow-lg); }
+.wb-ready-icon { font-size:56px; margin-bottom:16px; }
+.wb-ready-title { color:var(--wb-text); font-size:24px; font-weight:700; margin-bottom:12px; }
+.wb-ready-balance { font-size:16px; color:var(--wb-text-secondary); margin-bottom:32px; }
+.wb-ready-balance b { color:var(--wb-primary); font-size:20px; }
+.wb-btn-deploy { width:320px; height:56px; border:none; border-radius:var(--wb-radius); background:var(--wb-primary); color:#fff; font-size:18px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(0,180,42,.3); transition:all .2s; }
+.wb-btn-deploy:hover { background:var(--wb-primary-dark); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,180,42,.4); }
+.wb-btn-skip { display:block; margin:16px auto 0; background:none; border:none; color:var(--wb-text-tertiary); font-size:14px; cursor:pointer; }
+.wb-btn-skip:hover { color:var(--wb-text-secondary); }
 
-/* 教程入口按钮 - 未登录页 */
-.guide-entry-btn { width:100%; height:42px; margin-top:12px; border:none; border-radius:10px; background:linear-gradient(135deg,#ff7a45,#ff4d4f); color:#fff; font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(255,77,79,.3); }
-.guide-entry-btn:hover { box-shadow:0 6px 24px rgba(255,77,79,.4); transform:translateY(-1px); }
+/* ===== 查询结果页 ===== */
+.wb-query-card { width:520px; max-width:95vw; background:var(--wb-card); border-radius:var(--wb-radius-lg); padding:32px; box-shadow:var(--wb-shadow-lg); }
+.wb-query-card h2 { color:var(--wb-text); font-size:20px; margin-bottom:20px; text-align:center; }
+.wb-query-section { margin-bottom:20px; }
+.wb-query-section-title { font-size:14px; font-weight:600; color:var(--wb-text-secondary); margin-bottom:10px; }
+.wb-query-row { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--wb-bg); border-radius:var(--wb-radius); margin-bottom:6px; }
+.q-icon { font-size:18px; }
+.q-name { flex:1; font-size:14px; font-weight:600; color:var(--wb-text); }
+.q-status { font-size:13px; }
+.q-status.ok { color:var(--wb-primary); }
+.q-status.fail { color:#f53f3f; }
+.wb-query-empty { text-align:center; color:var(--wb-text-tertiary); padding:24px; font-size:14px; }
+.wb-query-key-box { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--wb-bg); border-radius:var(--wb-radius); }
+.wb-query-key-box code { font-size:12px; color:var(--wb-primary); word-break:break-all; flex:1; }
+.wb-copy-mini { border:none; background:none; cursor:pointer; font-size:14px; }
+.wb-query-balance { margin-top:12px; font-size:16px; text-align:center; color:var(--wb-text); }
+.wb-query-balance b { color:var(--wb-primary); font-size:22px; }
+.wb-query-warn { background:#fff7e6; border:1px solid #ffd591; border-radius:var(--wb-radius); padding:14px; font-size:13px; color:#d46b08; margin:16px 0; }
+.wb-query-actions { margin-top:20px; }
+.wb-btn-back { display:block; margin:16px auto 0; background:none; border:none; color:var(--wb-text-tertiary); cursor:pointer; font-size:14px; }
+.wb-btn-back:hover { color:var(--wb-text-secondary); }
 
-/* 教程弹窗样式（App.vue 复用 MainApp.vue 的 guide 样式） */
-.modal-bg { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; }
-.guide-box { width:720px; max-width:95vw; max-height:90vh; overflow:auto; padding:0; background:#fff; border-radius:12px; }
-.guide-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 0; }
-.guide-header h3 { margin:0; font-size:22px; font-weight:700; color:#1f1f1f; }
-.guide-close { background:none; border:none; font-size:22px; color:#999; cursor:pointer; }
-.guide-tip { padding:8px 24px 16px; font-size:13px; color:#8c8c8c; }
+/* ===== 弹窗通用 ===== */
+.wb-modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); z-index:99999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+.wb-modal { background:var(--wb-card); border-radius:var(--wb-radius-lg); box-shadow:var(--wb-shadow-lg); overflow:hidden; }
+.wb-modal-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid var(--wb-border); }
+.wb-modal-header h3, .wb-modal-header span { margin:0; font-size:18px; font-weight:700; color:var(--wb-text); }
+.wb-modal-close { background:none; border:none; font-size:20px; color:var(--wb-text-tertiary); cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+.wb-modal-close:hover { background:var(--wb-bg); color:var(--wb-text); }
+.wb-btn-cancel { flex:1; height:44px; border:1.5px solid var(--wb-border); border-radius:var(--wb-radius); background:var(--wb-card); color:var(--wb-text-secondary); font-size:15px; cursor:pointer; }
+.wb-btn-ok { flex:1; height:44px; border:none; border-radius:var(--wb-radius); background:var(--wb-primary); color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+.wb-btn-ok:hover { background:var(--wb-primary-dark); }
+
+/* 确认弹窗 */
+.confirm-modal { padding:28px; width:360px; text-align:center; }
+.confirm-title { font-size:17px; font-weight:700; color:var(--wb-text); margin-bottom:12px; }
+.confirm-msg { font-size:14px; color:var(--wb-text-secondary); line-height:1.6; margin-bottom:24px; }
+.confirm-btns { display:flex; gap:12px; }
+
+/* 更新弹窗 */
+.update-modal { padding:40px 48px; text-align:center; max-width:420px; }
+.update-icon { font-size:56px; margin-bottom:16px; }
+.update-modal h2 { color:var(--wb-text); font-size:22px; margin-bottom:12px; }
+.update-msg { color:var(--wb-text-secondary); font-size:15px; margin-bottom:8px; }
+.update-version { color:var(--wb-text-tertiary); font-size:13px; margin-bottom:28px; }
+
+/* 更新内容弹窗 */
+.changelog-modal { padding:36px 44px; width:440px; max-width:90vw; max-height:80vh; overflow-y:auto; }
+.changelog-header { text-align:center; margin-bottom:24px; }
+.changelog-icon { font-size:44px; display:block; margin-bottom:12px; }
+.changelog-header h2 { color:var(--wb-text); font-size:20px; }
+.changelog-list { margin-bottom:28px; }
+.changelog-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; font-size:14px; color:var(--wb-text-secondary); line-height:1.5; border-bottom:1px solid var(--wb-border); }
+.changelog-item:last-child { border-bottom:none; }
+.changelog-dot { color:var(--wb-primary); font-weight:bold; flex-shrink:0; }
+
+/* 版本栏 */
+.version-bar { position:fixed; bottom:12px; right:16px; z-index:9999; display:flex; align-items:center; gap:8px; }
+.version-text { font-size:12px; color:var(--wb-text-tertiary); }
+.version-check-btn { border:1px solid var(--wb-border); background:var(--wb-card); color:var(--wb-text-tertiary); font-size:12px; padding:4px 12px; border-radius:6px; cursor:pointer; transition:all .2s; }
+.version-check-btn:hover { border-color:var(--wb-primary); color:var(--wb-primary); }
+.version-check-btn:disabled { opacity:.5; cursor:default; }
+
+/* ===== 教程弹窗 ===== */
+.guide-modal { width:760px; max-width:95vw; max-height:90vh; overflow:auto; padding:0; }
+.guide-tip { padding:12px 24px 16px; font-size:13px; color:var(--wb-text-tertiary); }
 .vg-grid { padding:0 24px 24px; display:flex; flex-direction:column; gap:16px; }
-.vg-card { background:#fff; border:1px solid #f0f0f0; border-radius:12px; overflow:hidden; }
+.vg-card { background:var(--wb-card); border:1px solid var(--wb-border); border-radius:var(--wb-radius); overflow:hidden; }
 .vg-card.featured { border-color:#ffccc7; background:#fffafa; }
 .vg-head { display:flex; gap:14px; padding:16px 20px 12px; align-items:flex-start; }
-.vg-step { font-size:28px; font-weight:800; color:#e8e8e8; line-height:1; min-width:36px; }
+.vg-step { font-size:28px; font-weight:800; color:var(--wb-border); line-height:1; min-width:36px; }
 .vg-card.featured .vg-step { color:#cf1322; }
 .vg-copy { flex:1; min-width:0; }
 .vg-title-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.vg-title-row h2 { margin:0; font-size:17px; font-weight:700; color:#1f1f1f; }
+.vg-title-row h2 { margin:0; font-size:17px; font-weight:700; color:var(--wb-text); }
 .vg-tag { font-size:11px; color:#cf1322; background:#fff1f0; border:1px solid #ffccc7; border-radius:4px; padding:2px 6px; font-weight:600; }
-.vg-copy p { margin:4px 0 0; font-size:13px; color:#8c8c8c; line-height:1.5; }
+.vg-copy p { margin:4px 0 0; font-size:13px; color:var(--wb-text-tertiary); line-height:1.5; }
 .vg-player { display:block; width:100%; aspect-ratio:16/9; background:#000; border:none; }
 .vg-player::-webkit-media-controls-panel { background:rgba(0,0,0,.7); }
 
-.ready-card { text-align:center; }
-.success-icon { font-size:48px; margin-bottom:8px; }
-.ready-card h1 { color:#2f54eb; font-size:24px; margin-bottom:8px; }
-.balance-text { font-size:16px; color:#555; margin-bottom:24px; }
-.deploy-btn { width:280px; height:52px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f54eb,#722ed1); color:#fff; font-size:18px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(47,84,235,.3); }
-.deploy-btn:hover { box-shadow:0 6px 24px rgba(47,84,235,.4); transform:translateY(-1px); }
-.skip-btn { display:block; margin:12px auto 0; background:none; border:none; color:#999; font-size:13px; cursor:pointer; }
-
-.query-card { width:480px; max-width:95vw; background:#fff; border-radius:16px; padding:24px; box-shadow:0 8px 32px rgba(0,0,0,.1); }
-.query-card h2 { color:#2f54eb; font-size:20px; margin-bottom:16px; text-align:center; }
-.query-section { margin-bottom:16px; }
-.query-section-title { font-size:14px; font-weight:600; color:#555; margin-bottom:8px; }
-.query-row { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f6fa; border-radius:8px; margin-bottom:4px; }
-.q-icon { font-size:18px; }
-.q-name { flex:1; font-size:14px; font-weight:600; }
-.q-status { font-size:13px; }
-.q-status.ok { color:#52c41a; }
-.q-status.fail { color:#ff4d4f; }
-.query-empty { text-align:center; color:#999; padding:20px; font-size:14px; }
-.query-key-box { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f6fa; border-radius:8px; }
-.query-key-box code { font-size:12px; color:#2f54eb; word-break:break-all; flex:1; }
-.copy-mini { border:none; background:none; cursor:pointer; font-size:14px; }
-.query-balance { margin-top:8px; font-size:16px; text-align:center; }
-.query-balance b { color:#52c41a; font-size:20px; }
-.query-warn { background:#fff7e6; border:1px solid #ffd591; border-radius:8px; padding:10px; font-size:13px; color:#d46b08; margin:12px 0; }
-.query-actions { margin-top:16px; }
-.query-back { display:block; margin:12px auto 0; background:none; border:none; color:#999; cursor:pointer; font-size:13px; }
-
-.activate-screen { background:linear-gradient(135deg,#667eea,#764ba2); }
-.ready-screen { background:#f5f6fa; }
-.login-screen { background:linear-gradient(135deg,#667eea,#764ba2); }
-
-/* 自定义确认弹窗 */
-.confirm-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:99999; display:flex; align-items:center; justify-content:center; }
-.confirm-box { background:#fff; border-radius:16px; padding:24px; width:340px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,.2); }
-.confirm-title { font-size:17px; font-weight:700; color:#333; margin-bottom:10px; }
-.confirm-msg { font-size:14px; color:#666; line-height:1.6; margin-bottom:20px; }
-.confirm-btns { display:flex; gap:12px; }
-.confirm-btns button { flex:1; height:40px; border:none; border-radius:10px; font-size:15px; cursor:pointer; }
-.confirm-cancel { background:#f5f5f5; color:#666; }
-.confirm-ok { background:#2f54eb; color:#fff; }
-
-/* 强制更新弹窗 */
-.update-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.7); z-index:999999; display:flex; align-items:center; justify-content:center; }
-.update-box { background:#fff; border-radius:20px; padding:40px 48px; text-align:center; box-shadow:0 12px 48px rgba(0,0,0,.3); max-width:400px; }
-.update-icon { font-size:56px; margin-bottom:16px; }
-.update-box h2 { color:#333; font-size:22px; margin-bottom:12px; }
-.update-msg { color:#666; font-size:15px; margin-bottom:8px; }
-.update-version { color:#999; font-size:13px; margin-bottom:24px; }
-.update-btn { width:100%; height:48px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f54eb,#722ed1); color:#fff; font-size:17px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(47,84,235,.3); }
-.update-btn:hover { box-shadow:0 6px 24px rgba(47,84,235,.4); transform:translateY(-1px); }
-
-/* 右下角版本栏 */
-.version-bar { position:fixed; bottom:8px; right:12px; z-index:9999; display:flex; align-items:center; gap:8px; }
-.version-text { font-size:12px; color:rgba(255,255,255,.6); }
-.version-check-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:rgba(255,255,255,.7); font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; }
-.version-check-btn:hover { background:rgba(255,255,255,.15); color:#fff; }
-.version-check-btn:disabled { opacity:.5; cursor:default; }
-
-/* 更新内容弹窗 */
-.changelog-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.6); z-index:999998; display:flex; align-items:center; justify-content:center; }
-.changelog-box { background:#fff; border-radius:20px; padding:32px 40px; width:420px; max-width:90vw; max-height:80vh; overflow-y:auto; box-shadow:0 12px 48px rgba(0,0,0,.3); }
-.changelog-header { text-align:center; margin-bottom:20px; }
-.changelog-icon { font-size:40px; display:block; margin-bottom:8px; }
-.changelog-header h2 { color:#2f54eb; font-size:20px; }
-.changelog-list { margin-bottom:24px; }
-.changelog-item { display:flex; align-items:flex-start; gap:8px; padding:8px 0; font-size:14px; color:#555; line-height:1.5; border-bottom:1px solid #f0f0f0; }
-.changelog-item:last-child { border-bottom:none; }
-.changelog-dot { color:#2f54eb; font-weight:bold; flex-shrink:0; }
-.changelog-btn { width:100%; height:44px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f54eb,#722ed1); color:#fff; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 4px 16px rgba(47,84,235,.3); }
-.changelog-btn:hover { box-shadow:0 6px 24px rgba(47,84,235,.4); transform:translateY(-1px); }
-
-/* 漂浮客服按钮 */
-.float-qr-btn { position:fixed; bottom:70px; right:20px; padding:10px 16px; border-radius:24px; background:linear-gradient(135deg,#07c160,#06a050); border:none; cursor:pointer; box-shadow:0 4px 16px rgba(7,193,96,.4); z-index:99998; display:flex; align-items:center; gap:6px; transition:all .2s; color:#fff; }
+/* ===== 漂浮客服按钮 ===== */
+.float-qr-btn { position:fixed; bottom:70px; right:20px; padding:10px 18px; border-radius:24px; background:linear-gradient(135deg,#07c160,#06a050); border:none; cursor:pointer; box-shadow:0 4px 16px rgba(7,193,96,.4); z-index:99998; display:flex; align-items:center; gap:6px; transition:all .2s; color:#fff; }
 .float-qr-btn:hover { transform:scale(1.05); box-shadow:0 6px 24px rgba(7,193,96,.5); }
 .float-qr-icon { width:20px; height:20px; }
 .float-qr-text { font-size:13px; font-weight:600; }
 
 /* 客服二维码弹窗 */
-.qr-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:999999; display:flex; align-items:center; justify-content:center; }
-.qr-modal { background:#fff; border-radius:16px; padding:0; max-width:90vw; max-height:90vh; box-shadow:0 12px 48px rgba(0,0,0,.3); overflow:hidden; display:flex; flex-direction:column; }
-.qr-modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #f0f0f0; flex-shrink:0; }
-.qr-modal-header span { font-size:16px; font-weight:600; color:#333; }
-.qr-modal-close { background:none; border:none; font-size:18px; color:#999; cursor:pointer; }
-.qr-modal-body { padding:16px; text-align:center; overflow:auto; }
-.qr-modal-img { max-width:100%; max-height:60vh; border-radius:8px; }
-.qr-modal-tip { margin-top:12px; font-size:13px; color:#8c8c8c; }
+.qr-modal { max-width:90vw; max-height:90vh; display:flex; flex-direction:column; }
+.qr-modal-body { padding:20px; text-align:center; overflow:auto; }
+.qr-modal-img { max-width:100%; max-height:60vh; border-radius:var(--wb-radius); }
+.qr-modal-tip { margin-top:14px; font-size:13px; color:var(--wb-text-tertiary); }
 </style>
