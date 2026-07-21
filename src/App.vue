@@ -844,4 +844,36 @@ input, textarea, select { user-select:text; -webkit-user-select:text; -webkit-ap
 .qr-modal-body { padding:20px; text-align:center; overflow:auto; }
 .qr-modal-img { max-width:100%; max-height:60vh; border-radius:var(--wb-radius); }
 .qr-modal-tip { margin-top:14px; font-size:13px; color:var(--wb-text-tertiary); }
+
+/* ===== 窗口控制按钮 hover 颜色（Tauri Overlay 模式） ===== */
+/* 使用 CSS 变量控制 Tauri 窗口按钮颜色 */
+:root {
+  --tauri-window-button-hover: #e81123;
+  --tauri-window-button-close-hover: #e81123;
+  --tauri-window-button-minimize-hover: #f0f0f0;
+  --tauri-window-button-maximize-hover: #f0f0f0;
+}
+
+/* 通过 attribute 选择器覆盖 Tauri 默认按钮样式 */
+[data-tauri-window-button] {
+  transition: background-color .2s, color .2s;
+}
+[data-tauri-window-button]:hover {
+  background-color: var(--tauri-window-button-hover) !important;
+  color: #fff !important;
+}
+[data-tauri-window-button="close"]:hover {
+  background-color: #e81123 !important;
+  color: #fff !important;
+}
+[data-tauri-window-button="minimize"]:hover,
+[data-tauri-window-button="maximize"]:hover {
+  background-color: rgba(0,0,0,.1) !important;
+}
+
+/* 深色主题下的按钮颜色 */
+[data-theme="dark"] [data-tauri-window-button="minimize"]:hover,
+[data-theme="dark"] [data-tauri-window-button="maximize"]:hover {
+  background-color: rgba(255,255,255,.15) !important;
+}
 </style>
