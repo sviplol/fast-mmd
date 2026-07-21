@@ -12,10 +12,7 @@
       
       <button class="wb-deploy-btn" @click="$emit('deploy')">
         <img :src="logoIcon" class="wb-deploy-logo" alt="logo" />
-        <div class="wb-deploy-text">
-          <span class="wb-deploy-title">一键部署</span>
-          <span class="wb-deploy-subtitle">点击完成配置</span>
-        </div>
+        <span class="wb-deploy-title">一键部署</span>
       </button>
       
       <div class="wb-sidebar-menu">
@@ -437,16 +434,14 @@ async function doClearDeploy() {
 .wb-logo-text { font-size:18px; font-weight:800; color:var(--wb-text); }
 .wb-sidebar-version { font-size:11px; color:var(--wb-text-tertiary); background:var(--wb-bg); padding:2px 8px; border-radius:10px; }
 
-/* 一键部署按钮 - 大醒目高级 */
-.wb-deploy-btn { margin:16px; height:80px; border:none; border-radius:var(--wb-radius-lg); background:linear-gradient(135deg,var(--wb-primary) 0%,var(--wb-primary-dark) 100%); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0 20px; gap:12px; transition:all .25s; box-shadow:0 4px 16px rgba(0,180,42,.3), inset 0 1px 0 rgba(255,255,255,.2); position:relative; overflow:hidden; }
+/* 一键部署按钮 - 单行大醒目 */
+.wb-deploy-btn { margin:16px; height:56px; border:none; border-radius:var(--wb-radius-lg); background:linear-gradient(135deg,var(--wb-primary) 0%,var(--wb-primary-dark) 100%); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0 24px; gap:10px; transition:all .25s; box-shadow:0 4px 16px rgba(0,180,42,.3), inset 0 1px 0 rgba(255,255,255,.2); position:relative; overflow:hidden; }
 .wb-deploy-btn::before { content:''; position:absolute; top:0; left:-100%; width:100%; height:100%; background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent); transition:left .5s; }
 .wb-deploy-btn:hover::before { left:100%; }
 .wb-deploy-btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,180,42,.4), inset 0 1px 0 rgba(255,255,255,.2); }
 .wb-deploy-btn:active { transform:translateY(0); box-shadow:0 2px 8px rgba(0,180,42,.3); }
-.wb-deploy-logo { width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,.15); padding:4px; flex-shrink:0; }
-.wb-deploy-text { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; }
-.wb-deploy-title { font-size:17px; font-weight:700; letter-spacing:.5px; line-height:1.2; }
-.wb-deploy-subtitle { font-size:11px; opacity:.85; font-weight:400; line-height:1.2; }
+.wb-deploy-logo { width:28px; height:28px; border-radius:6px; background:rgba(255,255,255,.15); padding:3px; flex-shrink:0; }
+.wb-deploy-title { font-size:18px; font-weight:700; letter-spacing:1px; line-height:1; }
 
 .wb-sidebar-menu { flex:1; padding:0 8px; }
 .wb-menu-item { width:100%; height:44px; border:none; border-radius:var(--wb-radius); background:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:0 16px; margin-bottom:4px; transition:all .2s; color:var(--wb-text-secondary); }
