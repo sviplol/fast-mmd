@@ -333,7 +333,12 @@ function copy(text) {
 }
 
 function openShop() {
-  openLink("https://item.taobao.com/item.htm?ft=t&id=1062470106379");
+  openLink("https://e.tb.cn/h.8cuB9YlvDf1ydN9?tk=qNpigtgYuKR");
+}
+
+// 卡号过滤：只保留字母数字和-，去掉空格/中文/任何符号
+function filterCardInput(card) {
+  return card.replace(/[^a-zA-Z0-9-]/g, '');
 }
 
 async function loadData() {
@@ -347,10 +352,13 @@ async function loadData() {
 }
 
 async function doRecharge() {
-  if (!rechargeCard.value.trim()) { showToast("请输入卡号", "error"); return; }
+  const raw = rechargeCard.value.trim();
+  if (!raw) { showToast("请输入卡号", "error"); return; }
+  const cleaned = filterCardInput(raw);
+  if (!cleaned) { showToast("卡号格式不正确", "error"); return; }
   recharging.value = true;
   try {
-    var r = await redeemCard(props.serverPlatform, rechargeCard.value.trim(), props.apiKey);
+    var r = await redeemCard(props.serverPlatform, cleaned, props.apiKey);
     if (r.ok) {
       const added = r.added !== undefined ? r.added : r.balance;
       showToast("充值成功 +" + Number(added).toFixed(2) + " " + unit.value, "success");

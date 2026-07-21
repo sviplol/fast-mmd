@@ -450,10 +450,12 @@ function goDownload() {
   if (updateInfo.url) openLink(updateInfo.url);
 }
 
-// 卡号格式校验 + 过滤前缀
+// 卡号格式校验 + 过滤空格/中文/任何符号（只保留字母数字和-）
 function validateCard(card) {
-  // 自动过滤"卡号："、"卡号:"、"卡号 "等前缀
+  // 先过滤"卡号："、"卡号:"、"卡号 "等前缀
   let cleaned = card.replace(/^卡号[：:\s]*/i, '').replace(/^card[：:\s]*/i, '').trim();
+  // 再过滤所有非字母数字和-的字符（空格、中文、符号等）
+  cleaned = cleaned.replace(/[^a-zA-Z0-9-]/g, '');
   return { valid: /^[0-9]+-[A-Z0-9]+$/i.test(cleaned), cleaned };
 }
 
@@ -575,7 +577,7 @@ function logout() {
   });
 }
 
-function openShop() { openLink("https://item.taobao.com/item.htm?ft=t&id=1062470106379"); }
+function openShop() { openLink("https://e.tb.cn/h.8cuB9YlvDf1ydN9?tk=qNpigtgYuKR"); }
 
 function openDownloadLinks() {
   openLink("https://opencode.ai");
