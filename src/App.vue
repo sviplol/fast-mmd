@@ -13,11 +13,7 @@
           <span class="wb-logo-text">AI全自动部署</span>
         </div>
         <p class="wb-slogan">你的 AI 部署超能力</p>
-        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
-          <option value="glm">GLM 站 (glm.2bbb.cn) — 5200积分/20元</option>
-          <option value="tk">TK 站 (tk.2bbb.cn) — Token计费</option>
-        </select>
-        <input v-model="cardInput" class="wb-input" :placeholder="platform==='tk' ? '卡号 (666-XXXX...)' : '卡号 (5200-XXXX...)'" @keydown.enter="doActivate" :disabled="loading" />
+        <input v-model="cardInput" class="wb-input" placeholder="输入卡号（自动识别GLM/Token站）" @keydown.enter="doActivate" :disabled="loading" />
         <button class="wb-btn-primary" @click="doActivate" :disabled="loading">{{ loading ? '验证中...' : '激 活' }}</button>
         <div class="wb-links">
           <a @click="stage='login'">账号登录</a>
@@ -41,10 +37,6 @@
           <span class="wb-logo-text">AI全自动部署</span>
         </div>
         <p class="wb-slogan">账号登录</p>
-        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
-          <option value="glm">GLM 站 (glm.2bbb.cn)</option>
-          <option value="tk">TK 站 (tk.2bbb.cn)</option>
-        </select>
         <input v-model="username" class="wb-input" placeholder="用户名" style="margin-bottom:12px" @keydown.enter="doLogin" />
         <input v-model="password" type="password" class="wb-input" placeholder="密码" style="margin-bottom:12px" @keydown.enter="doLogin" />
         <button class="wb-btn-primary" @click="doLogin" :disabled="loading">{{ loading ? '登录中...' : '登 录' }}</button>
@@ -64,10 +56,6 @@
           <span class="wb-logo-text">AI全自动部署</span>
         </div>
         <p class="wb-slogan">注册新账号</p>
-        <select v-model="platform" class="wb-input" style="margin-bottom:12px">
-          <option value="glm">GLM 站 (glm.2bbb.cn)</option>
-          <option value="tk">TK 站 (tk.2bbb.cn)</option>
-        </select>
         <input v-model="username" class="wb-input" placeholder="用户名 (3-20位)" style="margin-bottom:12px" />
         <input v-model="password" type="password" class="wb-input" placeholder="密码 (6位以上)" style="margin-bottom:12px" />
         <input v-model="password2" type="password" class="wb-input" placeholder="确认密码" style="margin-bottom:12px" @keydown.enter="doRegister" />
@@ -176,6 +164,18 @@
       </div>
     </div>
 
+    <!-- 卡号不存在弹窗（带购买按钮） -->
+    <div v-if="cardNotFoundDialog" class="wb-modal-overlay" @click.self="cardNotFoundDialog=false">
+      <div class="wb-modal confirm-modal" @click.stop>
+        <div class="confirm-title">卡号不存在</div>
+        <div class="confirm-msg">该卡号在 GLM 站和 Token 站均不存在，请检查是否输入正确，或购买新卡密。</div>
+        <div class="confirm-btns">
+          <button class="wb-btn-cancel" @click="cardNotFoundDialog=false">取消</button>
+          <button class="wb-btn-ok" @click="openShop(); cardNotFoundDialog=false">购买卡密</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 右下角版本号 -->
     <div class="version-bar">
       <span class="version-text">v{{ appVersion }}</span>
@@ -260,6 +260,7 @@ const showQR = ref(false);
 const prevStage = ref("activate");
 const toast = reactive({ show: false, msg: "", type: "info" });
 const confirmDialog = reactive({ show: false, title: "确认", msg: "", onOk: null, onCancel: null });
+const cardNotFoundDialog = ref(false);
 const updateInfo = reactive({ show: false, current: 0, latest: 0, url: "" });
 const appVersion = ref(0);
 const checkingUpdate = ref(false);
@@ -468,7 +469,19 @@ function validateCard(card) {
   return { valid: cleaned.length > 0, cleaned, isKey: false };
 }
 
-// 卡号激活
+// 显示卡号不存在弹窗（带购买按钮）
+function showCardNotFoundDialog() {
+  confirmDialog.show = true;
+  confirmDialog.title = "卡号不存在";
+  confirmDialog.msg = "该卡号在 GLM 站和 Token 站均不存在，请检查是否输入正确，或购买新卡密。";
+  confirmDialog.onOk = () => {
+    confirmDialog.show = false;
+    openShop();
+  };
+  confirmDialog.onCancel = () => { confirmDialog.show = false; };
+}
+
+// 卡号激活 — 智能识别 GLM/TK 站
 async function doActivate() {
   const raw = cardInput.value.trim();
   if (!raw) { showToast("请输入卡号", "error"); return; }
@@ -500,23 +513,31 @@ async function doActivate() {
       }
     }
 
-    // 2. 兑换卡号（服务器端支持已使用卡号重新登录）
-    const r = await redeemCard(platform.value, cleaned, "");
+    // 2. 智能识别站点：先试 GLM，失败再试 TK
+    let r = await redeemCard("glm", cleaned, "");
+    let detectedPlatform = "glm";
+    
+    if (!r.ok && r.msg && (r.msg.includes("不存在") || r.msg.includes("无效"))) {
+      // GLM 站不存在，尝试 TK 站
+      r = await redeemCard("tk", cleaned, "");
+      detectedPlatform = "tk";
+    }
+    
     if (r.ok) {
       apiKey.value = r.key;
       balance.value = r.balance || 0;
-      store.set({ apiKey: r.key, balance: r.balance || 0, platform: platform.value, card: cleaned });
-      showToast("登录成功", "success");
+      platform.value = detectedPlatform;
+      store.set({ apiKey: r.key, balance: r.balance || 0, platform: detectedPlatform, card: cleaned });
+      showToast(`登录成功（${detectedPlatform === 'tk' ? 'Token站' : 'GLM站'}）`, "success");
       stage.value = "ready";
-    } else if (r.msg && (r.msg.includes("不存在") || r.msg.includes("封禁") || r.msg.includes("删除"))) {
-      // 卡号被封禁/删除
+    } else if (r.msg && (r.msg.includes("封禁") || r.msg.includes("删除"))) {
       showToast(r.msg, "error");
     } else if (r.msg && r.msg.includes("已使用")) {
-      // 不应该走到这里了（服务器已支持重新登录），但兜底
       showToast("此卡号已使用，请用账号登录", "error");
       setTimeout(() => { stage.value = "login"; }, 1500);
     } else {
-      showToast(r.msg || "卡号无效", "error");
+      // 卡号不存在：弹出购买卡密按钮
+      cardNotFoundDialog.value = true;
     }
   } catch(e) { showToast("网络错误: " + e.message, "error"); }
   finally { loading.value = false; }
