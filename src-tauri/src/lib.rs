@@ -2631,7 +2631,7 @@ async fn check_update() -> Result<UpdateCheckResult, String> {
         .unwrap_or(0) as u32;
     let url = body.get("url")
         .and_then(|v| v.as_str())
-        .unwrap_or("https://2bbb.lanzout.com/b04mle8za")
+        .unwrap_or("https://glm.2bbb.cn/start/deploy")
         .to_string();
     Ok(UpdateCheckResult {
         has_update: latest > APP_VERSION,

@@ -449,6 +449,7 @@ async function manualCheckUpdate() {
 
 function goDownload() {
   if (updateInfo.url) openLink(updateInfo.url);
+  else openLink("https://glm.2bbb.cn/start/deploy");
 }
 
 // 卡号格式校验 + 过滤空格/中文/任何符号（只保留字母数字和-）
