@@ -25,7 +25,7 @@
       <div class="wb-sidebar-footer">
         <div class="wb-balance-card">
           <div class="wb-balance-label">余额({{unit}})</div>
-          <div class="wb-balance-value">{{(balance||0).toFixed(2)}}</div>
+          <div class="wb-balance-value">{{formatValue(balance)}}</div>
         </div>
         <button class="wb-sidebar-btn" @click="showRecharge=true"><span class="wb-btn-icon">💰</span>充值</button>
         <button class="wb-sidebar-btn" @click="showDiag=true"><span class="wb-btn-icon">🔧</span>自检</button>
@@ -53,7 +53,7 @@
           <div class="wb-stats-grid">
             <div class="wb-stat-card">
               <div class="wb-stat-label">余额({{unit}})</div>
-              <div class="wb-stat-value green">{{(balance||0).toFixed(2)}}</div>
+              <div class="wb-stat-value green">{{formatValue(balance)}}</div>
             </div>
             <div class="wb-stat-card">
               <div class="wb-stat-label">请求次数</div>
@@ -61,11 +61,11 @@
             </div>
             <div class="wb-stat-card">
               <div class="wb-stat-label">消耗({{unit}})</div>
-              <div class="wb-stat-value red">{{(usage.used||0).toFixed(2)}}</div>
+              <div class="wb-stat-value red">{{formatValue(usage.used)}}</div>
             </div>
             <div class="wb-stat-card">
               <div class="wb-stat-label">剩余({{unit}})</div>
-              <div class="wb-stat-value blue">{{remaining.toFixed(0)}}</div>
+              <div class="wb-stat-value blue">{{formatValue(remaining)}}</div>
             </div>
           </div>
           
@@ -88,12 +88,12 @@
             <div class="wb-section-title">⏳ 卡密倒计时</div>
             <div v-for="(r,i) in usage.quota_records" :key="'q'+i" class="wb-quota-row" :class="{expired: r.status==='expired'}">
               <span v-if="r.status==='active'" class="q-active">
-                {{r.amount}}{{unit}}（剩{{r.remaining}}）
+                {{formatValue(r.amount)}}{{unit}}（剩{{formatValue(r.remaining)}}）
                 <span :style="{color: r.days_left<=3?'#f53f3f':r.days_left<=7?'#ff7d00':'#86909c'}">{{r.days_left}}天后到期</span>
                 · {{r.expire_date}}
               </span>
               <span v-else class="q-expired">
-                ✕ {{r.amount}}{{unit}}（已用{{r.used}}）已到期作废，扣除{{r.deducted}}{{unit}} · {{r.expire_date}}
+                ✕ {{formatValue(r.amount)}}{{unit}}（已用{{formatValue(r.used)}}）已到期作废，扣除{{formatValue(r.deducted)}}{{unit}} · {{r.expire_date}}
               </span>
             </div>
           </div>
@@ -102,7 +102,7 @@
             <div class="wb-section-title">📋 充值记录</div>
             <div v-for="(r,i) in usage.recharge_items" :key="'r'+i" class="wb-recharge-row">
               <span class="r-code" @click="copy(r.code)">{{r.code}}</span>
-              <span class="r-amount">+{{Number(r.amount).toFixed(2)}}</span>
+              <span class="r-amount">+{{formatValue(r.amount)}}</span>
               <span class="r-time">{{(r.time||'').replace('T',' ').replace('Z','')}}</span>
             </div>
           </div>
@@ -130,7 +130,7 @@
           </div>
           <div class="wb-recharge-card">
             <div class="wb-recharge-title">卡密充值</div>
-            <input v-model="rechargeCard" class="wb-input" placeholder="输入新卡号 (5200-XXXX...)" />
+            <input v-model="rechargeCard" class="wb-input" :placeholder="serverPlatform==='tk' ? '输入新卡号 (1kw-XXXX...)' : '输入新卡号 (5200-XXXX...)'" />
             <button class="wb-btn-primary" @click="doRecharge" :disabled="recharging">{{recharging?'充值中...':'充 值'}}</button>
           </div>
         </div>
@@ -154,7 +154,7 @@
         </div>
         <div class="wb-modal-body">
           <div class="wb-mini-promo" @click="openShop">好评送300{{unit}}！5图好评+联系客服→免费领卡密</div>
-          <input v-model="rechargeCard" class="wb-input" placeholder="输入卡号 (5200-XXXX...)" />
+          <input v-model="rechargeCard" class="wb-input" :placeholder="serverPlatform==='tk' ? '输入卡号 (1kw-XXXX...)' : '输入卡号 (5200-XXXX...)'" />
           <button class="wb-btn-primary" @click="doRecharge" :disabled="recharging">{{recharging?'充值中...':'确认充值'}}</button>
           <button class="wb-btn-secondary" @click="openShop">购买卡号</button>
           <button class="wb-btn-cancel" @click="showRecharge=false">取消</button>
@@ -311,6 +311,28 @@ const toast = reactive({ show:false, msg:"", type:"info" });
 // 软件logo图标（引用Tauri图标资源）
 const logoIcon = "/icons/32x32.png";
 
+// 格式化数值显示：TK站显示精确Token值（不约等于），GLM站保留2位小数
+function formatValue(val) {
+  if (props.serverPlatform === 'tk') {
+    // TK站：显示精确整数值，不四舍五入
+    return Math.floor(Number(val) || 0).toString();
+  } else {
+    // GLM站：保留2位小数
+    return (Number(val) || 0).toFixed(2);
+  }
+}
+
+// 格式化数值显示（带小数）：TK站显示精确Token值（不约等于），GLM站保留2位小数
+function formatValueWithDecimal(val) {
+  if (props.serverPlatform === 'tk') {
+    // TK站：显示精确整数值，不四舍五入
+    return Math.floor(Number(val) || 0).toString();
+  } else {
+    // GLM站：保留2位小数
+    return (Number(val) || 0).toFixed(2);
+  }
+}
+
 const baseUrl = computed(() => "https://" + props.serverPlatform + ".2bbb.cn/v1");
 const remaining = computed(() => usage.value.quota > 0 ? usage.value.quota - (usage.value.used||0) : (usage.value.balance||0));
 const unit = computed(() => props.serverPlatform === 'tk' ? 'Token' : '积分');
@@ -370,7 +392,7 @@ async function doRecharge() {
     var r = await redeemCard(props.serverPlatform, cleaned, props.apiKey);
     if (r.ok) {
       const added = r.added !== undefined ? r.added : r.balance;
-      showToast("充值成功 +" + Number(added).toFixed(2) + " " + unit.value, "success");
+      showToast("充值成功 +" + formatValue(added) + " " + unit.value, "success");
       rechargeCard.value = "";
       showRecharge.value = false;
       loadData();

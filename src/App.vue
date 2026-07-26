@@ -107,7 +107,7 @@
             <button class="wb-copy-mini" @click="copyText(queryResult.apiKey)">📋</button>
           </div>
           <div v-if="queryResult.balance !== null && queryResult.balance !== undefined" class="wb-query-balance">
-            剩余: <b>{{ Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}
+            剩余: <b>{{ platform==='tk' ? Math.floor(Number(queryResult.balance)||0) : Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}
           </div>
         </div>
 
@@ -471,14 +471,7 @@ function validateCard(card) {
 
 // 显示卡号不存在弹窗（带购买按钮）
 function showCardNotFoundDialog() {
-  confirmDialog.show = true;
-  confirmDialog.title = "卡号不存在";
-  confirmDialog.msg = "该卡号在 GLM 站和 Token 站均不存在，请检查是否输入正确，或购买新卡密。";
-  confirmDialog.onOk = () => {
-    confirmDialog.show = false;
-    openShop();
-  };
-  confirmDialog.onCancel = () => { confirmDialog.show = false; };
+  cardNotFoundDialog.value = true;
 }
 
 // 卡号激活 — 智能识别 GLM/TK 站
