@@ -31,7 +31,7 @@
         <button class="wb-sidebar-btn" @click="showDiag=true"><span class="wb-btn-icon">🔧</span>自检</button>
         <button class="wb-sidebar-btn" @click="showGuide=true"><span class="wb-btn-icon">📺</span>教程</button>
         <button class="wb-sidebar-btn" @click="toggleTheme">{{ isDark ? '☀️ 白天' : '🌙 夜晚' }}</button>
-        <button class="wb-sidebar-btn danger" @click="$emit('logout')">退出</button>
+        <button class="wb-sidebar-btn danger" @click="$emit('logout')"><span class="wb-btn-icon">🚪</span>退出登录</button>
       </div>
     </div>
     
