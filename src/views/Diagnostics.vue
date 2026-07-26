@@ -21,6 +21,7 @@
             <span class="ok-c">✅ {{ okCount }}</span>
             <span class="warn-c">⚠️ {{ warnCount }}</span>
             <span class="err-c">❌ {{ errCount }}</span>
+            <button class="fix-all" @click="forceFix" :disabled="fixing">{{ fixing?'修复中...':'🔧 强制修复' }}</button>
             <button v-if="fixableCount>0" class="fix-all" @click="fixAll" :disabled="fixing">{{ fixing?'修复中...':`一键修复(${fixableCount})` }}</button>
           </div>
           <div class="diag-list">
@@ -109,7 +110,7 @@
 <script setup>
 import { ref, computed } from "vue";
 
-const props = defineProps({});
+const props = defineProps({ apiKey: String, serverPlatform: String });
 const emit = defineEmits(["close"]);
 
 const tab = ref("auto");
@@ -119,8 +120,8 @@ const results = ref([]);
 const fixResult = ref(null);
 
 // 对话检测
-const testKey = ref("");
-const testUrl = ref("https://glm.2bbb.cn");
+const testKey = ref(props.apiKey || "");
+const testUrl = ref(props.serverPlatform ? `https://${props.serverPlatform}.2bbb.cn` : "https://glm.2bbb.cn");
 const testModel = ref("glm-5.2");
 const chatTesting = ref(false);
 const chatResult = ref(null);
@@ -203,6 +204,31 @@ async function fixAll() {
   fixing.value = false;
   if (needReboot) showRebootDialog();
   else showFix(`修复完成: 成功${ok} 失败${fail}`, ok > 0 ? "success" : "error");
+}
+
+// 强制修复：不管有无问题都执行修复，完成后提示重启电脑
+async function forceFix() {
+  fixing.value = true;
+  fixResult.value = null;
+  try {
+    if (window.__TAURI_INTERNALS__) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      // 执行代理修复（不管当前状态）
+      const r = await invoke("run_fix", { fixAction: "clear_proxy" });
+      if (r === "PROXY_FIXED") {
+        showRebootDialog();
+      } else {
+        // 也尝试其他修复
+        try { await invoke("run_fix", { fixAction: "clear_cache" }); } catch(e) {}
+        showFix("🔧 强制修复完成，请重启电脑", "success");
+        setTimeout(() => showRebootDialog(), 1500);
+      }
+    } else {
+      showFix("请在桌面客户端中修复", "error");
+    }
+  } catch(e) {
+    showFix("❌ 修复失败: " + e.message, "error");
+  } finally { fixing.value = false; }
 }
 
 async function backupAll() {

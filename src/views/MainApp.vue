@@ -163,7 +163,7 @@
     </div>
 
     <!-- 自检弹窗 -->
-    <Diagnostics v-if="showDiag" @close="showDiag=false" />
+    <Diagnostics v-if="showDiag" :api-key="apiKey" :server-platform="serverPlatform" @close="showDiag=false" />
 
     <!-- 清除部署弹窗 -->
     <div v-if="showClear" class="wb-modal-overlay" @click.self="showClear=false">
