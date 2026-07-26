@@ -269,7 +269,9 @@ async function doDeploy() {
   deployResults.value = [];
   try {
     const baseUrl = "https://" + props.serverPlatform + ".2bbb.cn";
-    const orderedIds = [defaultModel.value, ...selectedModels.value.filter(id => id !== defaultModel.value)];
+    // 按官方顺序排列：默认模型在最前，其余按 ALL_MODELS 官方顺序
+    const remainingIds = ALL_MODELS.map(m => m.id).filter(id => id !== defaultModel.value && selectedModels.value.includes(id));
+    const orderedIds = [defaultModel.value, ...remainingIds];
     const modelObjs = orderedIds.map(id => ALL_MODELS.find(m => m.id === id)).filter(Boolean);
     for (const p of selectedPlatforms.value) {
       const configs = modelObjs.map(m => buildModelConfig(m, reasoningLevel.value, deepThinking.value));

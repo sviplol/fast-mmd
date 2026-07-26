@@ -95,23 +95,24 @@ fn to_wb_description_en(model_id: &str) -> &'static str {
     }
 }
 
-/// 根据模型id返回官方credits字符串
+/// 根据模型id返回官方credits字符串（与WorkBuddy官方显示一致）
 fn to_wb_credits(model_id: &str) -> &'static str {
     match model_id {
         "glm-5.2" => "x0.79",
-        "glm-5.1" => "x0.40",
-        "glm-5.0-turbo" => "x0.20",
+        "glm-5.1" => "x0.79",
+        "glm-5.0-turbo" => "x0.95",
+        "glm-5v-turbo" => "x0.95",
         "deepseek-v3" => "x0.16",
         "deepseek-r1" => "x0.96",
         "deepseek-v3.2" => "x0.32",
         "deepseek-v4-flash" => "x0.32",
         "deepseek-v4-pro" => "x0.96",
         "kimi-k2.7" => "x0.57",
-        "kimi-k2.6" => "x0.29",
-        "minimax-m2.7" => "x0.07",
-        "minimax-m3" => "x0.14",
-        "hy3-preview" => "x0.10",
-        "kimi-k3" => "x0.57",
+        "kimi-k2.6" => "x0.52",
+        "minimax-m2.7" => "x0.26",
+        "minimax-m3" => "x0.25",
+        "hy3-preview" => "x0.00",
+        "kimi-k3" => "x1.62",
         _ => "",
     }
 }
