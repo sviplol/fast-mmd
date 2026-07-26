@@ -451,21 +451,37 @@ function goDownload() {
 }
 
 // 卡号格式校验 + 过滤空格/中文/任何符号（只保留字母数字和-）
+// 不验证前缀格式（GLM/TK站前缀不固定），只过滤非法字符
+// 唯一验证：如果输入的是 fm- 开头的密钥，提示客户应输入卡密而非密钥
 function validateCard(card) {
   // 先过滤"卡号："、"卡号:"、"卡号 "等前缀
   let cleaned = card.replace(/^卡号[：:\s]*/i, '').replace(/^card[：:\s]*/i, '').trim();
   // 再过滤所有非字母数字和-的字符（空格、中文、符号等）
   cleaned = cleaned.replace(/[^a-zA-Z0-9-]/g, '');
-  return { valid: /^[0-9]+-[A-Z0-9]+$/i.test(cleaned), cleaned };
+  
+  // 如果输入的是 fm- 开头的密钥，提示错误
+  if (/^fm-/i.test(cleaned)) {
+    return { valid: false, cleaned, isKey: true };
+  }
+  
+  // 其他情况都接受（不验证前缀格式）
+  return { valid: cleaned.length > 0, cleaned, isKey: false };
 }
 
 // 卡号激活
 async function doActivate() {
   const raw = cardInput.value.trim();
   if (!raw) { showToast("请输入卡号", "error"); return; }
-  // 过滤"卡号："等前缀
-  const { valid, cleaned } = validateCard(raw);
-  if (!valid) { showToast("卡号格式不正确，应为 5200-XXXX 格式", "error"); return; }
+  // 过滤"卡号："等前缀，验证格式
+  const { valid, cleaned, isKey } = validateCard(raw);
+  if (isKey) {
+    showToast("请输入卡密，而不是 fm- 开头的密钥", "error");
+    return;
+  }
+  if (!valid) {
+    showToast("请输入卡号", "error");
+    return;
+  }
   loading.value = true;
   try {
     // 1. 先查本地记录，避免重复兑换

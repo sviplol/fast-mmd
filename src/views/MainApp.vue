@@ -337,8 +337,13 @@ function openShop() {
 }
 
 // 卡号过滤：只保留字母数字和-，去掉空格/中文/任何符号
+// 如果输入的是 fm- 开头的密钥，提示错误
 function filterCardInput(card) {
-  return card.replace(/[^a-zA-Z0-9-]/g, '');
+  const cleaned = card.replace(/[^a-zA-Z0-9-]/g, '');
+  if (/^fm-/i.test(cleaned)) {
+    return { cleaned, isKey: true };
+  }
+  return { cleaned, isKey: false };
 }
 
 async function loadData() {
@@ -354,8 +359,12 @@ async function loadData() {
 async function doRecharge() {
   const raw = rechargeCard.value.trim();
   if (!raw) { showToast("请输入卡号", "error"); return; }
-  const cleaned = filterCardInput(raw);
-  if (!cleaned) { showToast("卡号格式不正确", "error"); return; }
+  const { cleaned, isKey } = filterCardInput(raw);
+  if (isKey) {
+    showToast("请输入卡密，而不是 fm- 开头的密钥", "error");
+    return;
+  }
+  if (!cleaned) { showToast("请输入卡号", "error"); return; }
   recharging.value = true;
   try {
     var r = await redeemCard(props.serverPlatform, cleaned, props.apiKey);
