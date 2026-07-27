@@ -27,7 +27,7 @@ jobs:
             artifact_glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
             rust_target: "aarch64-apple-darwin"
             upload_lanzou: true
-          - platform: macos-13
+          - platform: macos-14
             args: "--target x86_64-apple-darwin"
             artifact_name: "【Mac英特尔芯片】一键部署"
             artifact_glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
@@ -79,7 +79,7 @@ jobs:
             cp src-tauri/target/release/fast-mmd.exe "upload/【推荐】Windows免安装版_v${{ steps.ver.outputs.version }}.exe"
           fi
           # Mac: 清除隔离属性, 防止"已损坏"提示
-          if [ "${{ matrix.platform }}" = "macos-13" ] || [ "${{ matrix.platform }}" = "macos-14" ]; then
+          if [ "${{ matrix.platform }}" = "macos-14" ]; then
             echo "Clearing quarantine attributes..."
             DMG_FILE="upload/$FILENAME"
             # 方案1: 直接清除dmg文件的扩展属性
@@ -105,7 +105,7 @@ jobs:
             fi
           fi
           # Mac M芯片和英特尔都打包修复脚本
-          if [ "${{ matrix.platform }}" = "macos-13" ] || [ "${{ matrix.platform }}" = "macos-14" ]; then
+          if [ "${{ matrix.platform }}" = "macos-14" ]; then
             cp mac-fix-damaged.command "upload/Mac已损坏修复.command"
           fi
           ls -la upload/
