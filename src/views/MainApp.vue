@@ -124,8 +124,8 @@
         <!-- 充值 -->
         <div v-if="tab==='recharge'" class="wb-page">
           <div class="wb-promo-banner" @click="openShop">
-            <div class="wb-promo-title">限时活动：好评送300{{unit}}！</div>
-            <div class="wb-promo-desc">购买后带<b>5图好评</b> + 联系客服 → <b>免费领取300{{unit}}卡密一张</b>（每月限一次）</div>
+            <div class="wb-promo-title">限时活动：好评送100{{unit}}！</div>
+            <div class="wb-promo-desc">购买后带<b>5图好评</b> + 联系客服 → <b>免费领取100{{unit}}卡密一张</b>（每月限一次）</div>
             <div class="wb-promo-btn">点击前往购买</div>
           </div>
           <div class="wb-recharge-card">
@@ -153,7 +153,7 @@
           <button class="wb-modal-close" @click="showRecharge=false">✕</button>
         </div>
         <div class="wb-modal-body">
-          <div class="wb-mini-promo" @click="openShop">好评送300{{unit}}！5图好评+联系客服→免费领卡密</div>
+          <div class="wb-mini-promo" @click="openShop">好评送100{{unit}}！5图好评+联系客服→免费领卡密</div>
           <input v-model="rechargeCard" class="wb-input" :placeholder="serverPlatform==='tk' ? '输入卡号 (1kw-XXXX...)' : '输入卡号 (5200-XXXX...)'" />
           <button class="wb-btn-primary" @click="doRecharge" :disabled="recharging">{{recharging?'充值中...':'确认充值'}}</button>
           <button class="wb-btn-secondary" @click="openShop">购买卡号</button>
