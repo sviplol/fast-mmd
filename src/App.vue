@@ -107,7 +107,7 @@
             <button class="wb-copy-mini" @click="copyText(queryResult.apiKey)">📋</button>
           </div>
           <div v-if="queryResult.balance !== null && queryResult.balance !== undefined" class="wb-query-balance">
-            剩余: <b>{{ platform==='tk' ? Math.floor(Number(queryResult.balance)||0) : Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}
+            剩余: <b>{{ platform==='tk' ? Math.floor((Number(queryResult.balance)||0)*15002).toLocaleString() : Number(queryResult.balance).toFixed(2) }}</b> {{ platform==='tk' ? 'Token' : '积分' }}
           </div>
         </div>
 
@@ -303,6 +303,11 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  13: [
+    "TK站Token数值显示修复（1KW卡密显示10000000 Token，不再显示667）",
+    "Mac M芯片/英特尔CI runner修复（M芯片电脑不再提示已损坏）",
+    "强制更新下载地址统一为 https://glm.2bbb.cn/start/deploy",
+  ],
   12: [
     "新增漂浮客服按钮（未登录和主界面右下角）",
     "新增客服二维码弹窗（微信扫码联系）",

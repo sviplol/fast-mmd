@@ -311,22 +311,24 @@ const toast = reactive({ show:false, msg:"", type:"info" });
 // 软件logo图标（引用Tauri图标资源）
 const logoIcon = "/icons/32x32.png";
 
-// 格式化数值显示：TK站显示精确Token值（不约等于），GLM站保留2位小数
+// 格式化数值显示：TK站显示真实Token值（balance*15002），GLM站保留2位小数
 function formatValue(val) {
   if (props.serverPlatform === 'tk') {
-    // TK站：显示精确整数值，不四舍五入
-    return Math.floor(Number(val) || 0).toString();
+    // TK站：1积分≈15002Token，显示真实Token值
+    const realTokens = Math.floor((Number(val) || 0) * 15002);
+    return realTokens.toLocaleString();
   } else {
     // GLM站：保留2位小数
     return (Number(val) || 0).toFixed(2);
   }
 }
 
-// 格式化数值显示（带小数）：TK站显示精确Token值（不约等于），GLM站保留2位小数
+// 格式化数值显示（带小数）：TK站显示真实Token值（balance*15002），GLM站保留2位小数
 function formatValueWithDecimal(val) {
   if (props.serverPlatform === 'tk') {
-    // TK站：显示精确整数值，不四舍五入
-    return Math.floor(Number(val) || 0).toString();
+    // TK站：1积分≈15002Token，显示真实Token值
+    const realTokens = Math.floor((Number(val) || 0) * 15002);
+    return realTokens.toLocaleString();
   } else {
     // GLM站：保留2位小数
     return (Number(val) || 0).toFixed(2);
