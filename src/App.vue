@@ -515,9 +515,11 @@ async function doActivate() {
     // 2. 智能识别站点：先试 GLM，失败再试 TK
     let r = await redeemCard("glm", cleaned, "");
     let detectedPlatform = "glm";
+    let glmError = r.msg || "";
     
-    if (!r.ok && r.msg && (r.msg.includes("不存在") || r.msg.includes("无效"))) {
-      // GLM 站不存在，尝试 TK 站
+    // GLM 失败（任何原因），尝试 TK 站
+    if (!r.ok) {
+      console.log("GLM站识别失败:", glmError, "，尝试TK站...");
       r = await redeemCard("tk", cleaned, "");
       detectedPlatform = "tk";
     }
@@ -535,7 +537,8 @@ async function doActivate() {
       showToast("此卡号已使用，请用账号登录", "error");
       setTimeout(() => { stage.value = "login"; }, 1500);
     } else {
-      // 卡号不存在：弹出购买卡密按钮
+      // 两个站都不存在：弹出购买卡密按钮
+      console.log("GLM站错误:", glmError, "TK站错误:", r.msg);
       cardNotFoundDialog.value = true;
     }
   } catch(e) { showToast("网络错误: " + e.message, "error"); }
