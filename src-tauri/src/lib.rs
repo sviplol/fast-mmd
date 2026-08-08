@@ -28,6 +28,26 @@ fn to_wb_effort(level: &str) -> &str {
     }
 }
 
+/// 根据平台返回该平台支持的最大推理等级
+/// 前端只显示低/中/高3档，但部署时每平台映射到各自最大值
+fn to_platform_max_effort(platform: &str, level: &str) -> String {
+    // 用户选了"高"，每平台映射到该平台支持的最大值
+    if level == "high" {
+        match platform {
+            "opencode" => "max".to_string(),      // OpenCode 支持 max
+            "claudecode" => "high".to_string(),    // Claude Code/Anthropic 最大是 high
+            "codebuddy" | "workbuddy" => "high".to_string(), // WorkBuddy/CodeBuddy 最大是 high
+            "trae" => "high".to_string(),         // Trae 最大是 high
+            "clawcode" => "max".to_string(),      // Claw Code 支持 max
+            _ => "high".to_string(),
+        }
+    } else if level == "medium" {
+        "medium".to_string()
+    } else {
+        "low".to_string()
+    }
+}
+
 /// 将内部推理等级映射到 Claude Code/Anthropic 支持的等级
 fn to_anthropic_effort(level: &str) -> &str {
     to_wb_effort(level) // 同样的映射
@@ -406,7 +426,7 @@ fn deploy_opencode(config: &DeployConfig) -> Result<String, String> {
         models_map.insert(model_id.clone(), serde_json::json!({
             "name": model_name,
             "options": {
-                "reasoningEffort": config.reasoning_level
+                "reasoningEffort": to_platform_max_effort("opencode", &config.reasoning_level)
             },
             "attachment": true,
             "modalities": {"input": ["text", "image"]},
@@ -527,8 +547,9 @@ fn deploy_claude_code(config: &DeployConfig) -> Result<String, String> {
         });
         obj.insert("env".to_string(), env);
 
-        // 推理等级 — 用最高的，映射到平台支持的值，同时写入可选列表
-        obj.insert("effortLevel".to_string(), serde_json::json!(to_anthropic_effort(&highest)));
+        // 推理等级 — 用平台最大值
+        let cc_effort = to_platform_max_effort("claudecode", &config.reasoning_level);
+        obj.insert("effortLevel".to_string(), serde_json::json!(cc_effort));
         // 也写入可选等级列表，用户可手动切换
         obj.insert("availableEffortLevels".to_string(), serde_json::json!(levels));
 
@@ -1106,9 +1127,10 @@ fn deploy_trae(config: &DeployConfig) -> Result<String, String> {
     let default_model = config.selected_model_ids.first().unwrap_or(&config.model);
 
     // 推理等级映射: Trae 用 SOLO/Builder/Chat
-    let trae_mode = if config.deep_thinking || config.reasoning_levels.iter().any(|l| l == "max" || l == "xhigh") {
+    // 用户选"高"→SOLO（Trae最大），"中"→Builder，"低"→Chat
+    let trae_mode = if config.deep_thinking || config.reasoning_level == "high" {
         "SOLO"
-    } else if config.reasoning_levels.iter().any(|l| l == "high" || l == "medium") {
+    } else if config.reasoning_level == "medium" {
         "Builder"
     } else {
         "Chat"
@@ -1239,7 +1261,7 @@ fn deploy_claw_code(config: &DeployConfig) -> Result<String, String> {
             }
             if let Some(defaults) = agents.get_mut("defaults").and_then(|v| v.as_object_mut()) {
                 defaults.insert("model".into(), serde_json::json!({"primary": format!("antigravity/{}", default_model)}));
-                defaults.insert("thinking".into(), serde_json::json!({"level": to_wb_effort(&highest)}));
+                defaults.insert("thinking".into(), serde_json::json!({"level": to_platform_max_effort("clawcode", &config.reasoning_level)}));
             }
         }
     }
