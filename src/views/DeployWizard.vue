@@ -91,7 +91,7 @@
           <input type="checkbox" v-model="deepThinking" /> 深度思考
         </label>
         <div class="wb-rate-notice">
-          💡 百分百1比1倍率抵扣同步 — 各推理等级积分消耗按上游实际倍率1:1同步抵扣，无任何额外加价
+          💡 部署后支持和官方一样，在自定义模型里鼠标触碰更改思考等级强度，思考强度越高积分使用越多
         </div>
       </div>
 
@@ -149,7 +149,7 @@
           <div class="wb-big-warning-title">部署完成</div>
           <div class="wb-big-warning-content">
             默认模型 <b style="color:#00b42a">{{ ALL_MODELS.find(m=>m.id===defaultModel)?.name }}</b> 已自动配置，重启后即可使用！<br><br>
-            <span style="color:#86909c">如需切换其他模型，可在各平台的「自定义模型」中随时更换</span>
+            <span style="color:#86909c">如需切换其他模型，可在各平台的「自定义模型」中随时更换<br>支持和官方一样，鼠标触碰更改思考等级强度，思考强度越高积分使用越多</span>
           </div>
         </div>
 
@@ -195,7 +195,7 @@ const installed = ref({});
 const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
 const defaultModel = ref("auto");
-const reasoningLevel = ref("max");
+const reasoningLevel = ref("high");
 const deepThinking = ref(true);
 const deploying = ref(false);
 const deployResults = ref([]);
