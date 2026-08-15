@@ -6,7 +6,8 @@
 export const ALL_MODELS = [
   { id:"auto", name:"Auto", desc:"自动模式，根据任务难度智能分配模型，节省Token", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:128000, defaultReasoning:"high", recommended:true, isAuto:true },
   { id:"hy3-preview", name:"HY3 Preview", desc:"HY3 预览版", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:false, maxInputTokens:128000, maxOutputTokens:8192, defaultReasoning:"medium" },
-  { id:"glm-5.2", name:"GLM-5.2", desc:"智谱最新旗舰，推理+视觉+工具调用", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:128000, defaultReasoning:"high", recommended:true },
+  { id:"glm-5.3", name:"GLM-5.3", desc:"智谱最新旗舰，推理+视觉+工具调用", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:128000, defaultReasoning:"high", recommended:true },
+  { id:"glm-5.2", name:"GLM-5.2", desc:"智谱旗舰，推理+视觉+工具调用", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:128000, defaultReasoning:"high" },
   { id:"glm-5.1", name:"GLM-5.1", desc:"智谱上一代旗舰", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:128000, defaultReasoning:"high" },
   { id:"glm-5v-turbo", name:"GLM-5V Turbo", desc:"视觉模型，支持图片理解", type:"vision", supportsReasoning:false, supportsImages:true, supportsToolCall:false, maxInputTokens:128000, maxOutputTokens:8192, defaultReasoning:"none" },
   { id:"minimax-m3", name:"MiniMax M3", desc:"MiniMax 最新版", type:"chat", supportsReasoning:false, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:512000, defaultReasoning:"none" },
