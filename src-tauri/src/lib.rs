@@ -103,29 +103,6 @@ fn to_wb_description_en(model_id: &str) -> &'static str {
     }
 }
 
-/// 根据模型id返回官方credits字符串（与WorkBuddy官方显示一致）
-fn to_wb_credits(model_id: &str) -> &'static str {
-    match model_id {
-        "glm-5.3" => "x0.79",
-        "glm-5.2" => "x0.79",
-        "glm-5.1" => "x0.79",
-        "glm-5.0-turbo" => "x0.95",
-        "glm-5v-turbo" => "x0.95",
-        "deepseek-v3" => "x0.16",
-        "deepseek-r1" => "x0.96",
-        "deepseek-v3.2" => "x0.32",
-        "deepseek-v4-flash" => "x0.32",
-        "deepseek-v4-pro" => "x0.96",
-        "kimi-k2.7" => "x0.57",
-        "kimi-k2.6" => "x0.52",
-        "minimax-m2.7" => "x0.26",
-        "minimax-m3" => "x0.25",
-        "hy3-preview" => "x0.00",
-        "kimi-k3" => "x1.62",
-        _ => "",
-    }
-}
-
 /// 根据模型id返回中文描述 (用于WorkBuddy问号图标点击显示)
 fn to_wb_description_zh(model_id: &str) -> &'static str {
     match model_id {
@@ -604,7 +581,6 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
             "descriptionEn": to_wb_description_en(mid),
             "descriptionZh": to_wb_description_zh(mid),
-            "credits": to_wb_credits(mid),
             "deepThinking": true
         })
     }).collect();
