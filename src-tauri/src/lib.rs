@@ -55,20 +55,6 @@ fn to_anthropic_effort(level: &str) -> &str {
 
 /// 根据模型id返回WorkBuddy官方vendor标识(用于显示对应图标)
 /// e=智谱GLM, f=通用(DeepSeek/Kimi/MiniMax/auto), j=腾讯混元, tencent=腾讯
-fn to_wb_vendor(model_id: &str) -> &str {
-    if model_id.starts_with("glm-") || model_id.starts_with("glm5") {
-        "e"
-    } else if model_id == "auto" {
-        "f"
-    } else if model_id.starts_with("deepseek-") || model_id.starts_with("kimi-") || model_id.starts_with("minimax-") {
-        "f"
-    } else if model_id.starts_with("hy3") || model_id.starts_with("hunyuan") {
-        "j"
-    } else {
-        "f"
-    }
-}
-
 /// 根据模型id返回显示名称(跟官方一致)
 fn to_wb_display_name(model_id: &str) -> String {
     match model_id {
@@ -700,31 +686,21 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         });
         let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
+        // v14: 按官方 CustomModelsProductProvider 逆向结论精简字段
+        // (normalize只保留这些字段; 其余会被丢弃)
+        let max_input = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000);
+        let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
         serde_json::json!({
             "id": mid,
             "name": to_wb_display_name(mid),
             "vendor": "user",
             "url": wb_url,
             "apiKey": config.api_key,
+            "maxInputTokens": max_input,
+            "maxOutputTokens": max_output,
             "supportsToolCall": supports_tools,
             "supportsImages": true,
-            "supportsReasoning": supports_reasoning,
-            "reasoning": {
-                "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto",
-                "canDisableThinking": false,
-                "defaultEffort": to_wb_effort(&config.reasoning_level),
-                "supportedEfforts": ["low", "medium", "high"]
-            },
-            "relatedModels": {
-                "lite": mid,
-                "reasoning": mid
-            },
-            "tags": ["custom"],
-            "temperature": 1,
-            "descriptionEn": to_wb_description_en(mid),
-            "descriptionZh": to_wb_description_zh(mid),
-            "credits": to_wb_credits(mid)
+            "supportsReasoning": supports_reasoning
         })
     }).collect();
     // models.json 必须是对象格式 {"models": [...]}, 不能是数组 (WorkBuddy Provider只认对象)
@@ -732,151 +708,59 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_obj).unwrap())
         .map_err(|e| format!("写入 models.json 失败: {}", e))?;
 
-    // 写入 local_storage/entry_*.info (WorkBuddy 实际运行时读取的配置文件)
+    // v14: 不再注入 entry_*.info — WorkBuddy 5.3.x 启动时会用云端配置覆盖本地缓存
+    // (cloud_product_config_cache), 注入的模型与云端下发冲突会导致启动转圈(Mac实测)。
+    // models.json 是官方支持的本地自定义模型入口(CustomModelsJSON feature),
+    // 带 url 的模型会被 CustomModelsProductProvider 自动加 custom-local: 前缀并 SmartMerge 保留。
+    // 兼容清理: 移除旧版本注入到 entry_*.info / wb_entry_*.info 里的 custom-local: 模型
     let ls_dir = wb_dir.join("local_storage");
-    if !ls_dir.exists() {
-        // local_storage 不存在 = 用户从未启动过 WorkBuddy, 自动创建目录和空entry
-        fs::create_dir_all(&ls_dir).map_err(|e| format!("创建 local_storage 失败: {}", e))?;
-        let empty_entry = serde_json::json!([{
-            "userId": "launcher",
-            "data": {
-                "models": [],
-                "config": {},
-                "endpoint": {},
-                "featureToggles": {},
-                "agents": [],
-                "builtInMarketPlugins": [],
-                "builtInMarketplaces": [],
-                "builtInSkillMarketplaces": [],
-                "completion": {},
-                "integrations": {},
-                "links": [],
-                "modelPromotions": [],
-                "productFeatures": [],
-                "productFeatureExperiment": {},
-                "requestMaxStepLimit": {},
-                "telemetry": {},
-                "tokenUsageThresholds": {}
-            },
-            "ts": 0
-        }]);
-        let entry_name = format!("entry_{:x}.info", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
-        let entry_path = ls_dir.join(&entry_name);
-        fs::write(&entry_path, serde_json::to_string(&empty_entry).unwrap_or_default())
-            .map_err(|e| format!("创建 entry 文件失败: {}", e))?;
-    }
-
-    // 构建要注入的 custom-local 模型列表 (跟官方模型格式完全一致以获得图标)
-    let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
-        let mc = config.model_configs.iter().find(|m| {
-            m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
-        });
-        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let max_input = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000);
-        let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
-        let display_name = to_wb_display_name(mid);
-        let vendor = to_wb_vendor(mid);
-        let desc_en = to_wb_description_en(mid);
-        let desc_zh = to_wb_description_zh(mid);
-        let credits = to_wb_credits(mid);
-        serde_json::json!({
-            "id": format!("custom-local:{}", mid),
-            "name": display_name,
-            "vendor": vendor,
-            "url": wb_url,
-            "apiKey": config.api_key,
-            "supportsToolCall": supports_tools,
-            "supportsImages": true,
-            "supportsReasoning": supports_reasoning,
-            "onlyReasoning": supports_reasoning,
-            "isDefault": i == 0,
-            "maxInputTokens": max_input,
-            "maxOutputTokens": max_output,
-            "maxAllowedSize": max_input,
-            "reasoning": {
-                "effort": to_wb_effort(&config.reasoning_level),
-                "summary": "auto",
-                "canDisableThinking": false,
-                "defaultEffort": to_wb_effort(&config.reasoning_level),
-                "supportedEfforts": ["low", "medium", "high"]
-            },
-            "relatedModels": {
-                "lite": mid,
-                "reasoning": mid
-            },
-            "tags": ["craft"],
-            "temperature": 1,
-            "descriptionEn": desc_en,
-            "descriptionZh": desc_zh,
-            "credits": credits
-        })
-    }).collect();
-
-    // 处理所有 entry_*.info 文件 (支持多种格式)
-    let all_entries = find_all_workbuddy_entries(&ls_dir);
-    if all_entries.is_empty() {
-        return Err("未找到有效的 entry_*.info 文件, 请先启动一次 WorkBuddy".into());
-    }
-
-    let mut written_count = 0;
-    let mut errors: Vec<String> = Vec::new();
-
-    for (entry_name, json_str, format_type) in &all_entries {
-        let entry_path = ls_dir.join(entry_name);
-        let bak = entry_path.with_extension("info.launcher_bak");
-        let _ = fs::copy(&entry_path, &bak);
-
-        let result: Result<(), String> = match *format_type {
-            "gzip" => {
-                // 旧版 gzip+base64 格式
-                let mut data: serde_json::Value = serde_json::from_str(json_str)
-                    .map_err(|e| format!("解析失败: {}", e))?;
-                if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
-                    // 删除旧的 custom-local: 模型
-                    models.retain(|m| {
-                        let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        !id.starts_with("custom-local:")
-                    });
-                    // 清除所有现有模型的 isDefault (防止与我们的冲突)
-                    for m in models.iter_mut() {
-                        if let Some(obj) = m.as_object_mut() {
-                            obj.insert("isDefault".to_string(), serde_json::Value::Bool(false));
+    if ls_dir.exists() {
+        for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
+            let entry = match entry { Ok(e) => e, Err(_) => continue };
+            let name = entry.file_name().to_string_lossy().to_string();
+            // 处理旧版(entry_)和新版(wb_entry_)前缀
+            let is_entry = (name.starts_with("entry_") || name.starts_with("wb_entry_")) && name.ends_with(".info");
+            if !is_entry { continue }
+            if let Ok(raw) = fs::read(entry.path()) {
+                if let Ok(json_str) = decode_entry_info(&raw) {
+                    if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        let mut changed = false;
+                        // 新格式: 数组 [{userId, data:{models:[...]}}]
+                        if let Some(arr) = data.as_array_mut() {
+                            for item in arr.iter_mut() {
+                                if let Some(d) = item.get_mut("data").and_then(|v| v.as_object_mut()) {
+                                    if let Some(models) = d.get_mut("models").and_then(|m| m.as_array_mut()) {
+                                        let before = models.len();
+                                        models.retain(|m| {
+                                            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                            !id.starts_with("custom-local:")
+                                        });
+                                        if models.len() != before { changed = true; }
+                                    }
+                                }
+                            }
+                        }
+                        // 旧格式: 对象 {models:[...]}
+                        else if let Some(obj) = data.as_object_mut() {
+                            if let Some(models) = obj.get_mut("models").and_then(|m| m.as_array_mut()) {
+                                let before = models.len();
+                                models.retain(|m| {
+                                    let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                    !id.starts_with("custom-local:")
+                                });
+                                if models.len() != before { changed = true; }
+                            }
+                        }
+                        if changed {
+                            let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
+                            let encoded = encode_entry_info(&new_json)?;
+                            fs::write(entry.path(), encoded).map_err(|e| format!("写入失败: {}", e))?;
                         }
                     }
-                    // 添加新的
-                    for nm in &new_models {
-                        models.push(nm.clone());
-                    }
                 }
-                let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
-                let encoded = encode_entry_info(&new_json)?;
-                fs::write(&entry_path, encoded).map_err(|e| format!("写入失败: {}", e))?;
-                Ok(())
             }
-            "json" => {
-                // 新版裸JSON格式 (数组或对象)
-                let new_json = inject_models_into_json_entry(json_str, &new_models)?;
-                fs::write(&entry_path, new_json.into_bytes()).map_err(|e| format!("写入失败: {}", e))?;
-                Ok(())
-            }
-            _ => Ok(()),
-        };
-
-        match result {
-            Ok(()) => { written_count += 1; }
-            Err(e) => { errors.push(format!("{}: {}", entry_name, e)); }
         }
     }
-
-    if written_count == 0 {
-        return Err(format!("所有 entry 文件写入失败: {}", errors.join("; ")));
-    }
-
-    // 同时也处理 find_workbuddy_entry 返回的文件（兼容旧逻辑）
-    // 但上面已经处理了所有entry，这里只是确保不会遗漏
-    let _ = find_workbuddy_entry(&ls_dir);
 
     // 写入全局配置: config.json (全局 reasoningEffort + alwaysThinkingEnabled)
     let config_path = wb_dir.join("config.json");
@@ -906,7 +790,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     }
     let _ = fs::write(&settings_path, serde_json::to_string_pretty(&wb_settings).unwrap_or_default());
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 models.json + {} 个 entry 文件 + 全局配置 reasoningEffort=xhigh", config.selected_model_ids.len(), written_count))
+    Ok(format!("WorkBuddy: {} 个模型已写入 models.json (官方自定义模型入口) + 已清理旧版 entry 注入残留 + 全局配置 reasoningEffort=xhigh", config.selected_model_ids.len()))
 }
 
 /// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
@@ -937,131 +821,6 @@ fn kill_workbuddy_processes() {
     }
     // 等待进程完全退出和文件句柄释放 (3秒确保充分退出)
     std::thread::sleep(std::time::Duration::from_millis(3000));
-}
-
-/// 在 local_storage 目录中找到所有 entry_*.info 文件
-/// 返回 (文件名, 解码后的JSON字符串, 格式类型)
-/// 支持三种格式:
-///   1. gzip+base64+引号 (旧版5.2.x)
-///   2. 裸JSON数组 (新版5.2.5+)
-///   3. 裸JSON对象
-fn find_all_workbuddy_entries(ls_dir: &Path) -> Vec<(String, String, &'static str)> {
-    let mut result = Vec::new();
-    for entry in fs::read_dir(ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e)).into_iter().flatten() {
-        if let Ok(entry) = entry {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with("entry_") || !name.ends_with(".info") {
-                continue;
-            }
-            if let Ok(raw) = fs::read(entry.path()) {
-                // 尝试格式1: gzip+base64+引号
-                if let Ok(txt) = decode_entry_info(&raw) {
-                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&txt) {
-                        let date = data.get("date").and_then(|v| v.as_str()).unwrap_or("");
-                        result.push((name.clone(), txt, "gzip"));
-                        let _ = date; // 不再只取date最新的
-                    }
-                }
-                // 尝试格式2: 裸JSON (数组或对象)
-                if result.iter().find(|(n,_,_)| n == &name).is_none() {
-                    if let Ok(txt) = String::from_utf8(raw.to_vec()) {
-                        let trimmed = txt.trim();
-                        if trimmed.starts_with('[') || trimmed.starts_with('{') {
-                            if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
-                                result.push((name, trimmed.to_string(), "json"));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    result
-}
-
-/// 向裸JSON格式的entry注入custom-local模型
-/// 新版格式: [{userId, data:{models:[...]}, ts}, ...]
-fn inject_models_into_json_entry(json_str: &str, new_models: &[serde_json::Value]) -> Result<String, String> {
-    let mut data: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| format!("解析JSON entry失败: {}", e))?;
-
-    // 新格式: 数组，每个元素 {userId, data:{models:[...]}}
-    if let Some(arr) = data.as_array_mut() {
-        for item in arr.iter_mut() {
-            if let Some(d) = item.get_mut("data").and_then(|v| v.as_object_mut()) {
-                if let Some(models) = d.get_mut("models").and_then(|m| m.as_array_mut()) {
-                    // 删除旧的 custom-local: 模型
-                    models.retain(|m| {
-                        let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        !id.starts_with("custom-local:")
-                    });
-                    // 清除所有现有模型的 isDefault (防止与我们的冲突)
-                    for m in models.iter_mut() {
-                        if let Some(obj) = m.as_object_mut() {
-                            obj.insert("isDefault".to_string(), serde_json::Value::Bool(false));
-                        }
-                    }
-                    // 添加新的
-                    for nm in new_models {
-                        models.push(nm.clone());
-                    }
-                }
-            }
-        }
-    }
-    // 旧格式: 对象 {models:[...], ...}
-    else if let Some(obj) = data.as_object_mut() {
-        if let Some(models) = obj.get_mut("models").and_then(|m| m.as_array_mut()) {
-            models.retain(|m| {
-                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                !id.starts_with("custom-local:")
-            });
-            // 清除所有现有模型的 isDefault
-            for m in models.iter_mut() {
-                if let Some(obj) = m.as_object_mut() {
-                    obj.insert("isDefault".to_string(), serde_json::Value::Bool(false));
-                }
-            }
-            for nm in new_models {
-                models.push(nm.clone());
-            }
-        }
-    }
-
-    serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))
-}
-
-/// 在 local_storage 目录中找到当前 WorkBuddy 版本对应的 entry_*.info 文件
-/// 策略: 取 date 字段最新的 (即当前版本)
-fn find_workbuddy_entry(ls_dir: &Path) -> Result<String, String> {
-    let mut entries: Vec<(String, String)> = Vec::new(); // (filename, date)
-
-    for entry in fs::read_dir(ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
-        let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with("entry_") || !name.ends_with(".info") {
-            continue;
-        }
-        // 尝试解压读取日期
-        if let Ok(raw) = fs::read(entry.path()) {
-            if let Ok(json_str) = decode_entry_info(&raw) {
-                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    let date = data.get("date").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    if !date.is_empty() {
-                        entries.push((name, date));
-                    }
-                }
-            }
-        }
-    }
-
-    if entries.is_empty() {
-        return Err("未找到有效的 entry_*.info 文件, 请先启动 WorkBuddy".into());
-    }
-
-    // 取日期最新的
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
-    Ok(entries[0].0.clone())
 }
 
 /// 解码 entry_*.info: 去引号 -> base64 解码 -> gzip 解压
@@ -2051,25 +1810,44 @@ fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<St
         "workbuddy" => {
             // 关闭 WorkBuddy 避免覆盖
             kill_workbuddy_processes();
-            // 从 entry_*.info 中移除我们的 custom-local: 模型
+            // 从 entry_*.info / wb_entry_*.info 中移除我们的 custom-local: 模型
             let wb_dir = dirs::home_dir().ok_or("无法获取用户目录")?.join(".workbuddy");
             let ls_dir = wb_dir.join("local_storage");
             if ls_dir.exists() {
                 for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
                     let entry = match entry { Ok(e) => e, Err(_) => continue };
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if !name.starts_with("entry_") || !name.ends_with(".info") { continue }
+                    let is_entry = (name.starts_with("entry_") || name.starts_with("wb_entry_")) && name.ends_with(".info");
+                    if !is_entry { continue }
                     if let Ok(raw) = fs::read(entry.path()) {
                         if let Ok(json_str) = decode_entry_info(&raw) {
                             if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&json_str) {
                                 let mut changed = false;
-                                if let Some(models) = data.get_mut("models").and_then(|m| m.as_array_mut()) {
-                                    let before = models.len();
-                                    models.retain(|m| {
-                                        let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                        !id.starts_with("custom-local:")
-                                    });
-                                    if models.len() != before { changed = true; }
+                                // 新格式: 数组 [{userId, data:{models:[...]}}]
+                                if let Some(arr) = data.as_array_mut() {
+                                    for item in arr.iter_mut() {
+                                        if let Some(d) = item.get_mut("data").and_then(|v| v.as_object_mut()) {
+                                            if let Some(models) = d.get_mut("models").and_then(|m| m.as_array_mut()) {
+                                                let before = models.len();
+                                                models.retain(|m| {
+                                                    let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                                    !id.starts_with("custom-local:")
+                                                });
+                                                if models.len() != before { changed = true; }
+                                            }
+                                        }
+                                    }
+                                }
+                                // 旧格式: 对象 {models:[...]}
+                                else if let Some(obj) = data.as_object_mut() {
+                                    if let Some(models) = obj.get_mut("models").and_then(|m| m.as_array_mut()) {
+                                        let before = models.len();
+                                        models.retain(|m| {
+                                            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                            !id.starts_with("custom-local:")
+                                        });
+                                        if models.len() != before { changed = true; }
+                                    }
                                 }
                                 if changed {
                                     let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
@@ -2081,10 +1859,10 @@ fn clear_platform_deploy(platform: String, reasoning_level: String) -> Result<St
                     }
                 }
             }
-            // 也清除 models.json (旧版兼容)
+            // 清除 models.json (官方格式: {"models":[]})
             let models_path = wb_dir.join("models.json");
             if models_path.exists() {
-                let _ = fs::write(&models_path, "[]");
+                let _ = fs::write(&models_path, "{\"models\":[]}");
             }
             Ok("WorkBuddy 配置已清除".into())
         }
@@ -2616,7 +2394,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 13;
+const APP_VERSION: u32 = 14;
 
 /// 获取当前软件版本号
 #[tauri::command]

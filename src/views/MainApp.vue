@@ -360,10 +360,20 @@ function openShop() {
   openLink("https://e.tb.cn/h.8cuB9YlvDf1ydN9?tk=qNpigtgYuKR");
 }
 
-// 卡号过滤：只保留字母数字和-，去掉空格/中文/任何符号
+// 卡号过滤: 深度清洗(剥离不可见字符/前后缀文字)，提取数字-HEX卡号
 // 如果输入的是 fm- 开头的密钥，提示错误
 function filterCardInput(card) {
-  const cleaned = card.replace(/[^a-zA-Z0-9-]/g, '');
+  // 剥离不可见字符与空白
+  let cleaned = card.replace(/[\u200b\u200c\u200d\uFEFF\u3000\s\x00-\x1f]/g, '');
+  // 提取卡号主体
+  const m = cleaned.match(/(\d{1,8})-([A-Fa-f0-9]{16,64})/);
+  if (m) {
+    cleaned = m[1] + '-' + m[2].toUpperCase();
+  } else {
+    cleaned = cleaned.replace(/[^a-zA-Z0-9-]/g, '');
+    const fmIdx = cleaned.toLowerCase().indexOf('fm-');
+    if (fmIdx > 0) cleaned = cleaned.substring(0, fmIdx);
+  }
   if (/^fm-/i.test(cleaned)) {
     return { cleaned, isKey: true };
   }

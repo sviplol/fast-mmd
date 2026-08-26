@@ -303,6 +303,11 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  14: [
+    "修复: 首次输入卡密易提示卡密错误 — 深度清洗粘贴内容（自动剥离前后缀文字/空格/不可见字符，小写卡号自动转大写）",
+    "修复: Mac版WorkBuddy部署后转圈 — 改用官方 models.json 入口，不再注入 entry 缓存（避免与云端配置冲突）",
+    "优化: 网络错误时不再误报「卡号不存在」，兑换中卡号提示等待后重试",
+  ],
   13: [
     "TK站Token数值显示修复（1KW卡密显示10000000 Token，不再显示667）",
     "Mac M芯片/英特尔CI runner修复（M芯片电脑不再提示已损坏）",
@@ -457,20 +462,30 @@ function goDownload() {
   else openLink("https://glm.2bbb.cn/start/deploy");
 }
 
-// 卡号格式校验 + 过滤空格/中文/任何符号（只保留字母数字和-）
-// 不验证前缀格式（GLM/TK站前缀不固定），只过滤非法字符
-// 唯一验证：如果输入的是 fm- 开头的密钥，提示客户应输入卡密而非密钥
+// 卡号格式校验 + 深度清洗
+// 规则: 从粘贴文本中提取卡号（数字-大写HEX格式），自动剥离前后缀文字/空白/不可见字符
+// 唯一验证: 如果提取出 fm- 开头的密钥，提示客户应输入卡密而非密钥
 function validateCard(card) {
-  // 先过滤"卡号："、"卡号:"、"卡号 "等前缀
-  let cleaned = card.replace(/^卡号[：:\s]*/i, '').replace(/^card[：:\s]*/i, '').trim();
-  // 再过滤所有非字母数字和-的字符（空格、中文、符号等）
-  cleaned = cleaned.replace(/[^a-zA-Z0-9-]/g, '');
-  
+  // 1. 剥离不可见字符: 零宽空格/BOM/全角空格/换行/制表符等
+  let cleaned = card.replace(/[\u200b\u200c\u200d\uFEFF\u3000\s\x00-\x1f]/g, '');
+  // 2. 提取卡号主体: 匹配 "数字段-HEX段" 格式（如 10000-B5BA80D50E75042015281BF61C71ECDF）
+  //    前后允许有任意被剥离后的杂字符（中文前缀/后缀文字已在上一步被压缩成相邻字符串）
+  const m = cleaned.match(/(\d{1,8})-([A-Fa-f0-9]{16,64})/);
+  if (m) {
+    cleaned = m[1] + '-' + m[2].toUpperCase();
+  } else {
+    // 3. 兜底: 无匹配时保持原有过滤逻辑（字母数字和-）
+    cleaned = cleaned.replace(/[^a-zA-Z0-9-]/g, '');
+    // 混入密钥场景: "卡号 密钥：fm-xxx" 整体过滤后卡号被污染，尝试截断
+    const fmIdx = cleaned.toLowerCase().indexOf('fm-');
+    if (fmIdx > 0) cleaned = cleaned.substring(0, fmIdx);
+  }
+
   // 如果输入的是 fm- 开头的密钥，提示错误
   if (/^fm-/i.test(cleaned)) {
     return { valid: false, cleaned, isKey: true };
   }
-  
+
   // 其他情况都接受（不验证前缀格式）
   return { valid: cleaned.length > 0, cleaned, isKey: false };
 }
@@ -516,14 +531,22 @@ async function doActivate() {
     let r = await redeemCard("glm", cleaned, "");
     let detectedPlatform = "glm";
     let glmError = r.msg || "";
-    
-    // GLM 失败（任何原因），尝试 TK 站
-    if (!r.ok) {
+
+    // GLM 失败时分类处理:
+    // - 网络类错误(超时/网络错误) → 不再试TK(两站同一台服务器, 网络问题双站都失败), 直接提示
+    // - 明确业务错误(封禁/删除/兑换中/已使用) → 不再试TK(卡号在GLM有记录)
+    // - "卡号不存在" → 尝试 TK 站(卡可能在TK站)
+    const networkErr = !r.ok && (glmError.includes("网络") || glmError.includes("超时") || glmError.includes("请求超时"));
+    const bizErr = !r.ok && (glmError.includes("封禁") || glmError.includes("删除") || glmError.includes("兑换中"));
+    if (!r.ok && !networkErr && !bizErr) {
       console.log("GLM站识别失败:", glmError, "，尝试TK站...");
       r = await redeemCard("tk", cleaned, "");
       detectedPlatform = "tk";
+    } else if (!r.ok && (networkErr || bizErr)) {
+      // 网络/业务错误直接用GLM的错误信息，避免TK"卡号不存在"误导用户
+      r = { ok: false, msg: glmError || "网络错误，请稍后重试" };
     }
-    
+
     if (r.ok) {
       apiKey.value = r.key;
       balance.value = r.balance || 0;
@@ -536,6 +559,11 @@ async function doActivate() {
     } else if (r.msg && r.msg.includes("已使用")) {
       showToast("此卡号已使用，请用账号登录", "error");
       setTimeout(() => { stage.value = "login"; }, 1500);
+    } else if (r.msg && r.msg.includes("兑换中")) {
+      // pending锁: 提示等待而非"卡号不存在"
+      showToast(r.msg, "error");
+    } else if (networkErr) {
+      showToast("网络不稳定，请稍等10秒后重试", "error");
     } else {
       // 两个站都不存在：弹出购买卡密按钮
       console.log("GLM站错误:", glmError, "TK站错误:", r.msg);
