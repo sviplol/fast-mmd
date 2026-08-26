@@ -56,7 +56,9 @@ export const PLATFORMS = {
 export const REASONING_LEVELS = [
   { value: "low", label: "低", desc: "轻度推理", cost: "2x" },
   { value: "medium", label: "中", desc: "中度推理", cost: "3x" },
-  { value: "high", label: "高（最大）", desc: "最大思考强度", cost: "5x" },
+  { value: "high", label: "高", desc: "高度推理", cost: "4x" },
+  { value: "xhigh", label: "超高", desc: "超高度推理", cost: "5x" },
+  { value: "max", label: "极致", desc: "最大思考强度", cost: "6x" },
 ];
 
 export function buildDeployConfig(platform, apiKey, baseUrl, model, reasoningLevels, deepThinking) {

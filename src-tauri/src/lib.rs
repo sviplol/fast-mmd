@@ -17,34 +17,33 @@ fn read_json_file(path: &Path) -> Option<serde_json::Value> {
 const REASONING_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /// 将内部推理等级映射到 WorkBuddy/CodeBuddy 支持的等级
-/// WorkBuddy/CodeBuddy 只支持 low/medium/high，不支持 xhigh/max
+/// WorkBuddy源码白名单: ["minimal","low","medium","high","xhigh","max"] — 完整5档透传
 fn to_wb_effort(level: &str) -> &str {
     match level {
         "none" | "minimal" => "low",
         "low" => "low",
         "medium" => "medium",
-        "high" | "xhigh" | "max" => "high",
+        "high" => "high",
+        "xhigh" => "xhigh",
+        "max" => "max",
         _ => "high",
     }
 }
 
-/// 根据平台返回该平台支持的最大推理等级
-/// 前端只显示低/中/高3档，但部署时每平台映射到各自最大值
+/// 根据平台返回该平台支持的推理等级（5档透传，Claude Code 最高 xhigh）
 fn to_platform_max_effort(platform: &str, level: &str) -> String {
-    // 用户选了"高"，每平台映射到该平台支持的最大值
-    if level == "high" {
-        match platform {
-            "opencode" => "max".to_string(),      // OpenCode 支持 max
-            "claudecode" => "high".to_string(),    // Claude Code/Anthropic 最大是 high
-            "codebuddy" | "workbuddy" => "high".to_string(), // WorkBuddy/CodeBuddy 最大是 high
-            "trae" => "high".to_string(),         // Trae 最大是 high
-            "clawcode" => "max".to_string(),      // Claw Code 支持 max
-            _ => "high".to_string(),
-        }
-    } else if level == "medium" {
-        "medium".to_string()
-    } else {
-        "low".to_string()
+    let mapped = match level {
+        "low" => "low",
+        "medium" => "medium",
+        "high" => "high",
+        "xhigh" => "xhigh",
+        "max" => "max",
+        _ => "high",
+    };
+    match platform {
+        // Claude Code/Anthropic 白名单最高 xhigh
+        "claudecode" if mapped == "max" => "xhigh".to_string(),
+        _ => mapped.to_string(),
     }
 }
 
@@ -558,10 +557,25 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
+        // 官方1:1的5档思考强度（WorkBuddy源码白名单 low/medium/high/xhigh/max），全模型全开
+        let efforts: Vec<&str> = mc
+            .and_then(|c| c.get("supportedEfforts"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|e| e.as_str()).collect())
+            .unwrap_or_else(|| vec!["low", "medium", "high", "xhigh", "max"]);
+        let efforts_json: Vec<serde_json::Value> = efforts.iter().map(|e| serde_json::json!(e)).collect();
+        let default_effort = mc
+            .and_then(|c| c.get("defaultEffort"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("high");
+        let can_disable = mc
+            .and_then(|c| c.get("canDisableThinking"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
 
         serde_json::json!({
             "id": mid,
-            "name": to_wb_display_name(mid),
+            "name": format!("【选我】{}", to_wb_display_name(mid)),
             "vendor": "user",
             "url": cb_url,
             "apiKey": config.api_key,
@@ -573,9 +587,9 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "reasoning": {
                 "effort": to_wb_effort(&config.reasoning_level),
                 "summary": "auto",
-                "canDisableThinking": false,
-                "defaultEffort": to_wb_effort(&config.reasoning_level),
-                "supportedEfforts": ["low", "medium", "high"]
+                "canDisableThinking": can_disable,
+                "defaultEffort": default_effort,
+                "supportedEfforts": efforts_json
             },
             "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
@@ -668,7 +682,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
         serde_json::json!({
             "id": mid,
-            "name": to_wb_display_name(mid),
+            "name": format!("【选我】{}", to_wb_display_name(mid)),
             "vendor": "user",
             "url": wb_url,
             "apiKey": config.api_key,
@@ -739,6 +753,9 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     }
 
     // 写入全局配置: config.json (全局 reasoningEffort + alwaysThinkingEnabled)
+    // v14.2: 深度思考跟随用户勾选（默认关闭省token），reasoningEffort 用部署等级
+    let wb_effort = to_wb_effort(&config.reasoning_level);
+    let always_thinking = config.deep_thinking;
     let config_path = wb_dir.join("config.json");
     let mut wb_config: serde_json::Value = if config_path.exists() {
         read_json_file(&config_path)
@@ -747,8 +764,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({})
     };
     if let Some(obj) = wb_config.as_object_mut() {
-        obj.insert("reasoningEffort".to_string(), serde_json::json!("xhigh"));
-        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(true));
+        obj.insert("reasoningEffort".to_string(), serde_json::json!(wb_effort));
+        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(always_thinking));
     }
     let _ = fs::write(&config_path, serde_json::to_string_pretty(&wb_config).unwrap_or_default());
 
@@ -761,12 +778,12 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({})
     };
     if let Some(obj) = wb_settings.as_object_mut() {
-        obj.insert("reasoningEffort".to_string(), serde_json::json!("xhigh"));
-        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(true));
+        obj.insert("reasoningEffort".to_string(), serde_json::json!(wb_effort));
+        obj.insert("alwaysThinkingEnabled".to_string(), serde_json::json!(always_thinking));
     }
     let _ = fs::write(&settings_path, serde_json::to_string_pretty(&wb_settings).unwrap_or_default());
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 models.json (官方自定义模型入口) + 已清理旧版 entry 注入残留 + 全局配置 reasoningEffort=xhigh", config.selected_model_ids.len()))
+    Ok(format!("WorkBuddy: {} 个模型已写入 models.json (官方自定义模型入口) + 已清理旧版 entry 注入残留 + 全局配置 reasoningEffort={} alwaysThinking={}", config.selected_model_ids.len(), wb_effort, always_thinking))
 }
 
 /// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
@@ -2370,7 +2387,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 14;
+const APP_VERSION: u32 = 15;
 
 /// 获取当前软件版本号
 #[tauri::command]

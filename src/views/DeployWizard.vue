@@ -89,6 +89,8 @@
         </div>
         <label class="wb-deep-toggle">
           <input type="checkbox" v-model="deepThinking" /> 深度思考
+          <span class="wb-deep-warn" v-if="!deepThinking" style="color:#86909c;font-size:12px">（开启燃烧token进入深度思考，积分费的快，建议关闭）</span>
+          <span class="wb-deep-warn" v-else style="color:#ff4d4f;font-size:12px">⚠️ 开启燃烧token进入深度思考，积分费的快</span>
         </label>
         <div class="wb-rate-notice">
           💡 部署后支持和官方一样，在自定义模型里鼠标触碰更改思考等级强度，思考强度越高积分使用越多
@@ -196,7 +198,7 @@ const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
 const defaultModel = ref("auto");
 const reasoningLevel = ref("high");
-const deepThinking = ref(true);
+const deepThinking = ref(false);
 const deploying = ref(false);
 const deployResults = ref([]);
 const showVideo = ref(false);
