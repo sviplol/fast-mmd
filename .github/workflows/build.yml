@@ -66,6 +66,15 @@ jobs:
 
       - name: Build Tauri app
         run: npx tauri build ${{ matrix.args }}
+        # bundle_dmg.sh偶发失败(hdiutil竞态), 自动重试一次
+        id: build_tauri
+      - name: Build Tauri app (retry on dmg failure)
+        if: failure() && steps.build_tauri.outcome == 'failure'
+        run: |
+          # 清理失败的dmg产物后重试
+          rm -rf src-tauri/target/*/release/bundle/dmg || true
+          rm -rf src-tauri/target/release/bundle/dmg || true
+          npx tauri build ${{ matrix.args }}
 
       - name: Rename artifact
         shell: bash
