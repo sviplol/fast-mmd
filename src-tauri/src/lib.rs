@@ -676,11 +676,21 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         });
         let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
         let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
-        // v14: 按官方 CustomModelsProductProvider 逆向结论精简字段
-        // (normalize只保留这些字段; 其余会被丢弃)
         let max_input = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000);
         let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
-        serde_json::json!({
+        // 5档思考强度(WorkBuddy源码白名单 low/medium/high/xhigh/max)— 全模型全开
+        let efforts: Vec<String> = if supports_reasoning {
+            mc.and_then(|c| c.get("supportedEfforts"))
+              .and_then(|v| v.as_array())
+              .map(|arr| arr.iter().filter_map(|e| e.as_str().map(String::from)).collect())
+              .unwrap_or_else(|| vec!["low".to_string(), "medium".to_string(), "high".to_string(), "xhigh".to_string(), "max".to_string()])
+        } else { vec![] };
+        let efforts_json: Vec<serde_json::Value> = efforts.iter().map(|e| serde_json::json!(e)).collect();
+        let default_effort = mc.and_then(|c| c.get("defaultEffort"))
+            .and_then(|v| v.as_str()).unwrap_or("high");
+        let can_disable = mc.and_then(|c| c.get("canDisableThinking"))
+            .and_then(|v| v.as_bool()).unwrap_or(true);
+        let mut entry = serde_json::json!({
             "id": mid,
             "name": format!("【选我】{}", to_wb_display_name(mid)),
             "vendor": "user",
@@ -691,41 +701,67 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "supportsToolCall": supports_tools,
             "supportsImages": true,
             "supportsReasoning": supports_reasoning
-        })
+        });
+        // v15.1: 必须写 reasoning 字段 — settings 面板读 model.reasoning.supportedEfforts
+        if supports_reasoning {
+            entry["reasoning"] = serde_json::json!({
+                "effort": to_wb_effort(&config.reasoning_level),
+                "summary": "auto",
+                "canDisableThinking": can_disable,
+                "defaultEffort": default_effort,
+                "supportedEfforts": efforts_json
+            });
+        }
+        entry
     }).collect();
     // models.json 必须是对象格式 {"models": [...]}, 不能是数组 (WorkBuddy Provider只认对象)
     let models_json_obj = serde_json::json!({"models": models_json_entries});
     fs::write(&models_path, serde_json::to_string_pretty(&models_json_obj).unwrap())
         .map_err(|e| format!("写入 models.json 失败: {}", e))?;
 
-    // v14: 不再注入 entry_*.info — WorkBuddy 5.3.x 启动时会用云端配置覆盖本地缓存
-    // (cloud_product_config_cache), 注入的模型与云端下发冲突会导致启动转圈(Mac实测)。
-    // models.json 是官方支持的本地自定义模型入口(CustomModelsJSON feature),
-    // 带 url 的模型会被 CustomModelsProductProvider 自动加 custom-local: 前缀并 SmartMerge 保留。
-    // 兼容清理: 移除旧版本注入到 entry_*.info / wb_entry_*.info 里的 custom-local: 模型
+    // v15.1: 不再注入模型到 entry_*.info(防转圈)，改为只注入"支持的思考强度"到云端模型缓存
+    // (cloud_product_config_cache): settings面板的checkbox读取 model.reasoning.supportedEfforts
+    // 只有6个推理模型有该字段(其他模型checkbox都是空的) — 我们补全5档让UI可切换
     let ls_dir = wb_dir.join("local_storage");
+    let full_efforts: Vec<&'static str> = vec!["low", "medium", "high", "xhigh", "max"];
     if ls_dir.exists() {
         for entry in fs::read_dir(&ls_dir).map_err(|e| format!("读取 local_storage 失败: {}", e))? {
             let entry = match entry { Ok(e) => e, Err(_) => continue };
             let name = entry.file_name().to_string_lossy().to_string();
-            // 处理旧版(entry_)和新版(wb_entry_)前缀
             let is_entry = (name.starts_with("entry_") || name.starts_with("wb_entry_")) && name.ends_with(".info");
             if !is_entry { continue }
             if let Ok(raw) = fs::read(entry.path()) {
                 if let Ok(json_str) = decode_entry_info(&raw) {
                     if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&json_str) {
                         let mut changed = false;
+                        let mut modified_count = 0usize;
+                        // 工具函数: 给单个模型补 reasoning.supportedEfforts
+                        let patch_model = |m: &mut serde_json::Value| -> bool {
+                            if !m.get("supportsReasoning").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                return false;
+                            }
+                            let obj = match m.as_object_mut() { Some(o) => o, None => return false };
+                            let reasoning = obj.entry("reasoning".to_string())
+                                .or_insert_with(|| serde_json::json!({}));
+                            let r = match reasoning.as_object_mut() { Some(o) => o, None => return false };
+                            let before = r.get("supportedEfforts").cloned();
+                            let new_efforts: Vec<serde_json::Value> = full_efforts.iter()
+                                .map(|e| serde_json::json!(e)).collect();
+                            r.insert("supportedEfforts".to_string(), serde_json::Value::Array(new_efforts));
+                            r.entry("canDisableThinking".to_string()).or_insert(serde_json::json!(true));
+                            r.entry("defaultEffort".to_string()).or_insert(serde_json::json!("high"));
+                            r.entry("summary".to_string()).or_insert(serde_json::json!("auto"));
+                            let after = r.get("supportedEfforts").cloned();
+                            before != after
+                        };
                         // 新格式: 数组 [{userId, data:{models:[...]}}]
                         if let Some(arr) = data.as_array_mut() {
                             for item in arr.iter_mut() {
                                 if let Some(d) = item.get_mut("data").and_then(|v| v.as_object_mut()) {
                                     if let Some(models) = d.get_mut("models").and_then(|m| m.as_array_mut()) {
-                                        let before = models.len();
-                                        models.retain(|m| {
-                                            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                            !id.starts_with("custom-local:")
-                                        });
-                                        if models.len() != before { changed = true; }
+                                        for m in models.iter_mut() {
+                                            if patch_model(m) { modified_count += 1; changed = true; }
+                                        }
                                     }
                                 }
                             }
@@ -733,18 +769,18 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                         // 旧格式: 对象 {models:[...]}
                         else if let Some(obj) = data.as_object_mut() {
                             if let Some(models) = obj.get_mut("models").and_then(|m| m.as_array_mut()) {
-                                let before = models.len();
-                                models.retain(|m| {
-                                    let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                    !id.starts_with("custom-local:")
-                                });
-                                if models.len() != before { changed = true; }
+                                for m in models.iter_mut() {
+                                    if patch_model(m) { modified_count += 1; changed = true; }
+                                }
                             }
                         }
                         if changed {
                             let new_json = serde_json::to_string(&data).map_err(|e| format!("序列化失败: {}", e))?;
                             let encoded = encode_entry_info(&new_json)?;
                             fs::write(entry.path(), encoded).map_err(|e| format!("写入失败: {}", e))?;
+                        }
+                        if modified_count > 0 {
+                            eprintln!("[v15.1] 注入5档思考强度到 {} 个模型 ({}个 entry 文件)", modified_count, name);
                         }
                     }
                 }
@@ -783,7 +819,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
     }
     let _ = fs::write(&settings_path, serde_json::to_string_pretty(&wb_settings).unwrap_or_default());
 
-    Ok(format!("WorkBuddy: {} 个模型已写入 models.json (官方自定义模型入口) + 已清理旧版 entry 注入残留 + 全局配置 reasoningEffort={} alwaysThinking={}", config.selected_model_ids.len(), wb_effort, always_thinking))
+    Ok(format!("WorkBuddy: {} 个模型已写入 models.json (官方自定义模型入口) + 已给所有推理模型注入5档思考强度到 entry 缓存 + 全局配置 reasoningEffort={} alwaysThinking={}", config.selected_model_ids.len(), wb_effort, always_thinking))
 }
 
 /// 关闭所有 WorkBuddy 进程 (部署前必须关闭, 否则退出时会覆盖 entry 文件)
@@ -2387,7 +2423,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 15;
+const APP_VERSION: u32 = 16;
 
 /// 获取当前软件版本号
 #[tauri::command]
