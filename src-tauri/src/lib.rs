@@ -567,7 +567,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         let default_effort = mc
             .and_then(|c| c.get("defaultEffort"))
             .and_then(|v| v.as_str())
-            .unwrap_or("high");
+            .unwrap_or("medium");
         let can_disable = mc
             .and_then(|c| c.get("canDisableThinking"))
             .and_then(|v| v.as_bool())
@@ -687,7 +687,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         } else { vec![] };
         let efforts_json: Vec<serde_json::Value> = efforts.iter().map(|e| serde_json::json!(e)).collect();
         let default_effort = mc.and_then(|c| c.get("defaultEffort"))
-            .and_then(|v| v.as_str()).unwrap_or("high");
+            .and_then(|v| v.as_str()).unwrap_or("medium");
         let can_disable = mc.and_then(|c| c.get("canDisableThinking"))
             .and_then(|v| v.as_bool()).unwrap_or(true);
         let mut entry = serde_json::json!({
@@ -749,7 +749,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                                 .map(|e| serde_json::json!(e)).collect();
                             r.insert("supportedEfforts".to_string(), serde_json::Value::Array(new_efforts));
                             r.entry("canDisableThinking".to_string()).or_insert(serde_json::json!(true));
-                            r.entry("defaultEffort".to_string()).or_insert(serde_json::json!("high"));
+                            r.entry("defaultEffort".to_string()).or_insert(serde_json::json!("medium"));
                             r.entry("summary".to_string()).or_insert(serde_json::json!("auto"));
                             let after = r.get("supportedEfforts").cloned();
                             before != after
