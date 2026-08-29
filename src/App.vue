@@ -303,6 +303,9 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  18: [
+    "模型名称统一为 NB 品牌（与官方模型不重复，下拉显示 NB:模型名）",
+  ],
   17: [
     "新增 GLM-5.3 Flash 模型（智谱快速版，低延迟高性价比）",
   ],
