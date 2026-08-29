@@ -552,7 +552,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 
         serde_json::json!({
             "id": mid,
-            "name": "NB".to_string(),
+            "name": "选我".to_string(),
             "vendor": "user",
             "url": cb_url,
             "apiKey": config.api_key,
@@ -669,7 +669,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             .and_then(|v| v.as_bool()).unwrap_or(true);
         let mut entry = serde_json::json!({
             "id": mid,
-            "name": "NB".to_string(),
+            "name": "选我".to_string(),
             "vendor": "user",
             "url": wb_url,
             "apiKey": config.api_key,
