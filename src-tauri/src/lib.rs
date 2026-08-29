@@ -59,6 +59,7 @@ fn to_wb_display_name(model_id: &str) -> String {
     match model_id {
         "auto" => "自动模式（智能选择）".to_string(),
         "glm-5.3" => "GLM-5.3".to_string(),
+        "glm-5.3-flash" => "GLM-5.3 Flash".to_string(),
         "glm-5.2" => "GLM-5.2".to_string(),
         "glm-5.1" => "GLM-5.1".to_string(),
         "glm-5.0-turbo" => "GLM-5.0 Turbo".to_string(),
@@ -83,6 +84,7 @@ fn to_wb_description_en(model_id: &str) -> &'static str {
     match model_id {
         "auto" => "Balances quality and speed. Automatically selects the best model for each task, with a variable credit multiplier.",
         "glm-5.3" => "Latest GLM flagship, 1M context, built for long-horizon tasks.",
+        "glm-5.3-flash" => "Fast and cost-effective version of GLM-5.3.",
         "glm-5.2" => "1M context, built for long-horizon tasks.",
         "glm-5.1" => "Previous generation flagship model.",
         "glm-5.0-turbo" => "Fast response version.",
@@ -107,6 +109,7 @@ fn to_wb_description_zh(model_id: &str) -> &'static str {
     match model_id {
         "auto" => "自动模式，根据任务难度智能分配模型，节省Token",
         "glm-5.3" => "智谱最新旗舰，1M上下文，深度推理+视觉+工具调用",
+        "glm-5.3-flash" => "智谱快速版，低延迟高性价比",
         "glm-5.2" => "智谱旗舰，1M上下文，深度推理+视觉+工具调用",
         "glm-5.1" => "智谱上一代旗舰模型",
         "glm-5.0-turbo" => "快速响应版，适合日常任务",
@@ -2423,7 +2426,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 16;
+const APP_VERSION: u32 = 17;
 
 /// 获取当前软件版本号
 #[tauri::command]
