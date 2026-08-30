@@ -303,6 +303,9 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  19: [
+    "新增 HY4 Preview 模型（腾讯混元HY4预览版）",
+  ],
   18: [
     "模型名称统一为「选我」品牌（与官方模型不重复，下拉显示 选我:模型名）",
   ],
