@@ -305,6 +305,7 @@ const guideVideos = [
 const CHANGELOG = {
   19: [
     "新增 HY4 Preview 模型（腾讯混元HY4预览版）",
+    "修正 6 个模型上下文参数与官方对齐（glm-5.3-flash/minimax-m3/kimi-k2.6/deepseek-v4-flash→128K，v4-pro 输出→128K）",
   ],
   18: [
     "模型名称统一为「选我」品牌（与官方模型不重复，下拉显示 选我:模型名）",
