@@ -558,7 +558,12 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
 
         serde_json::json!({
             "id": mid,
-            "name": "选我".to_string(),
+            "name": match mid.as_str() {
+                "fast-model" => "【选我】快速".to_string(),
+                "balanced-model" => "【选我】均衡".to_string(),
+                "deep-model" => "【选我】极致".to_string(),
+                _ => "选我".to_string(),
+            },
             "vendor": "user",
             "url": cb_url,
             "apiKey": config.api_key,
@@ -675,7 +680,12 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             .and_then(|v| v.as_bool()).unwrap_or(true);
         let mut entry = serde_json::json!({
             "id": mid,
-            "name": "选我".to_string(),
+            "name": match mid.as_str() {
+                "fast-model" => "【选我】快速".to_string(),
+                "balanced-model" => "【选我】均衡".to_string(),
+                "deep-model" => "【选我】极致".to_string(),
+                _ => "选我".to_string(),
+            },
             "vendor": "user",
             "url": wb_url,
             "apiKey": config.api_key,
