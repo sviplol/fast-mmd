@@ -55,6 +55,7 @@ export function buildModelConfig(model, reasoningLevels, deepThinking) {
     } : undefined,
     supportsToolCall: model.supportsToolCall,
     supportsImages: true,
+    iconUrl: model.tierIcon || "",
     maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
     deepThinking: deepThinking && model.supportsReasoning,

@@ -562,7 +562,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
                 "fast-model" => "【选我】快速".to_string(),
                 "balanced-model" => "【选我】均衡".to_string(),
                 "deep-model" => "【选我】极致".to_string(),
-                _ => "选我".to_string(),
+                _ => "【选我】".to_string(),
             },
             "vendor": "user",
             "url": cb_url,
@@ -583,7 +583,8 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
             "descriptionEn": to_wb_description_en(mid),
             "descriptionZh": to_wb_description_zh(mid),
-            "deepThinking": true
+            "deepThinking": true,
+            "iconUrl": mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("")
         })
     }).collect();
 
@@ -684,7 +685,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "fast-model" => "【选我】快速".to_string(),
                 "balanced-model" => "【选我】均衡".to_string(),
                 "deep-model" => "【选我】极致".to_string(),
-                _ => "选我".to_string(),
+                _ => "【选我】".to_string(),
             },
             "vendor": "user",
             "url": wb_url,
@@ -693,7 +694,8 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "maxOutputTokens": max_output,
             "supportsToolCall": supports_tools,
             "supportsImages": true,
-            "supportsReasoning": supports_reasoning
+            "supportsReasoning": supports_reasoning,
+            "iconUrl": mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("")
         });
         // v15.1: 必须写 reasoning 字段 — settings 面板读 model.reasoning.supportedEfforts
         if supports_reasoning {
