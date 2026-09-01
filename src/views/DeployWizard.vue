@@ -71,7 +71,7 @@
             <span class="mcheck">{{ selectedModels.includes(m.id) ? '✅' : '⬜' }}</span>
             <span class="mname">{{ m.name }}</span>
             <span class="mdesc">{{ m.desc }}</span>
-            <span v-if="m.isAuto" class="mtag auto">Auto</span>
+            <span v-if="m.isTier" class="mtag auto">档位</span>
             <span v-else-if="m.supportsReasoning" class="mtag r">推理</span>
           </div>
         </div>
@@ -109,7 +109,7 @@
             <span class="mcheck">{{ defaultModel===m.id ? '🔵' : '⚪' }}</span>
             <span class="mname">{{ m.name }}</span>
             <span class="mdesc">{{ m.desc }}</span>
-            <span v-if="m.isAuto" class="mtag auto">Auto</span>
+            <span v-if="m.isTier" class="mtag auto">档位</span>
             <span v-else-if="m.recommended" class="mtag r">推荐</span>
           </div>
         </div>
@@ -196,7 +196,7 @@ const detectDone = ref(false);
 const installed = ref({});
 const selectedPlatforms = ref([]);
 const selectedModels = ref(ALL_MODELS.map(m => m.id));
-const defaultModel = ref("auto");
+const defaultModel = ref("fast-model");
 const reasoningLevel = ref("high");
 const deepThinking = ref(false);
 const deploying = ref(false);

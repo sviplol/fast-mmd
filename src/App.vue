@@ -303,6 +303,10 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  20: [
+    "同步官方三档模型调度：快速/均衡/极致（取代旧Auto模式，官方倍率 x0.21/x0.65/x1.20）",
+    "快速档默认选中，三档均支持工具调用/图片/思考强度切换",
+  ],
   19: [
     "新增 HY4 Preview 模型（腾讯混元HY4预览版）",
     "修正 6 个模型上下文参数与官方对齐（glm-5.3-flash/minimax-m3/kimi-k2.6/deepseek-v4-flash→128K，v4-pro 输出→128K）",

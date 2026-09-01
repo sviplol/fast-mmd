@@ -56,7 +56,9 @@ fn to_anthropic_effort(level: &str) -> &str {
 /// 根据模型id返回官方descriptionEn (跟官方entry完全一致)
 fn to_wb_description_en(model_id: &str) -> &'static str {
     match model_id {
-        "auto" => "Balances quality and speed. Automatically selects the best model for each task, with a variable credit multiplier.",
+        "fast-model" => "Prioritizes speed for simple tasks and quick answers.",
+        "balanced-model" => "Balances speed and quality for most everyday tasks.",
+        "deep-model" => "Prioritizes depth and accuracy for complex analysis and high-stakes tasks.",
         "glm-5.3" => "Latest GLM flagship, 1M context, built for long-horizon tasks.",
         "glm-5.3-flash" => "Fast and cost-effective version of GLM-5.3.",
         "glm-5.2" => "1M context, built for long-horizon tasks.",
@@ -82,7 +84,9 @@ fn to_wb_description_en(model_id: &str) -> &'static str {
 /// 根据模型id返回中文描述 (用于WorkBuddy问号图标点击显示)
 fn to_wb_description_zh(model_id: &str) -> &'static str {
     match model_id {
-        "auto" => "自动模式，根据任务难度智能分配模型，节省Token",
+        "fast-model" => "优先响应速度，适合简单任务与快速问答",
+        "balanced-model" => "兼顾速度与质量，适合大多数日常工作",
+        "deep-model" => "优先深度与准确性，适合复杂分析和高要求任务",
         "glm-5.3" => "智谱最新旗舰，1M上下文，深度推理+视觉+工具调用",
         "glm-5.3-flash" => "智谱快速版，低延迟高性价比",
         "glm-5.2" => "智谱旗舰，1M上下文，深度推理+视觉+工具调用",
@@ -2402,7 +2406,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 19;
+const APP_VERSION: u32 = 20;
 
 /// 获取当前软件版本号
 #[tauri::command]

@@ -4,8 +4,10 @@
  */
 
 export const ALL_MODELS = [
-  { id:"auto", name:"Auto", desc:"自动模式，根据任务难度智能分配模型，节省Token", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:131072, defaultReasoning:"high", recommended:true, isAuto:true, supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
-  { id:"hy3-preview", name:"HY3 Preview", desc:"HY3 预览版", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:false, maxInputTokens:192000, maxOutputTokens:128000, defaultReasoning:"medium", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
+  { id:"fast-model", name:"快速", desc:"优先响应速度，适合简单任务与快速问答", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:48000, defaultReasoning:"medium", recommended:true, isTier:true, tierIcon:"https://download.codebuddy.cn/model-icon/wb-fast.svg", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
+  { id:"balanced-model", name:"均衡", desc:"兼顾速度与质量，适合大多数日常工作", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:48000, defaultReasoning:"medium", isTier:true, tierIcon:"https://download.codebuddy.cn/model-icon/wb-balanced.svg", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
+  { id:"deep-model", name:"极致", desc:"优先深度与准确性，适合复杂分析和高要求任务", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:200000, maxOutputTokens:48000, defaultReasoning:"medium", isTier:true, tierIcon:"https://download.codebuddy.cn/model-icon/wb-primary.svg", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
+    { id:"hy3-preview", name:"HY3 Preview", desc:"HY3 预览版", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:false, maxInputTokens:192000, maxOutputTokens:128000, defaultReasoning:"medium", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
   { id:"hy4-preview", name:"HY4 Preview", desc:"腾讯混元HY4预览版", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:false, maxInputTokens:128000, maxOutputTokens:8192, defaultReasoning:"medium", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:false },
   { id:"glm-5.3", name:"GLM-5.3", desc:"智谱最新旗舰，推理+视觉+工具调用", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:1000000, maxOutputTokens:131072, defaultReasoning:"high", recommended:true, supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:true },
   { id:"glm-5.3-flash", name:"GLM-5.3 Flash", desc:"智谱快速版，低延迟高性价比", type:"chat", supportsReasoning:true, supportsImages:true, supportsToolCall:true, maxInputTokens:128000, maxOutputTokens:8192, defaultReasoning:"medium", supportedEfforts:["low","medium","high","xhigh","max"], defaultEffort:"medium", canDisableThinking:true },
@@ -36,24 +38,6 @@ export function buildModelConfig(model, reasoningLevels, deepThinking) {
     ? (model.defaultEffort || "medium")
     : undefined;
   const canDisableThinking = model.supportsReasoning ? (model.canDisableThinking !== false) : undefined;
-
-  // Auto 模型特殊处理
-  if (model.isAuto || model.id === "auto") {
-    return {
-      id: "auto",
-      name: "Auto",
-      supportsReasoning: true,
-      onlyReasoning: true,
-      reasoning: { effort: "high", summary: "auto", available: ["high","max"] },
-      supportsToolCall: true,
-      supportsImages: true,
-      maxInputTokens: 1000000,
-      maxOutputTokens: 128000,
-      deepThinking: deepThinking,
-      isAuto: true,
-      desc: "自动模式，根据任务难度智能分配模型",
-    };
-  }
 
   const base = {
     id: model.id,
