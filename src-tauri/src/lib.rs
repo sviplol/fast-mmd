@@ -559,10 +559,10 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         serde_json::json!({
             "id": mid,
             "name": match mid.as_str() {
-                "fast-model" => "【选我】快速".to_string(),
-                "balanced-model" => "【选我】均衡".to_string(),
-                "deep-model" => "【选我】极致".to_string(),
-                _ => "【选我】".to_string(),
+                "fast-model" => "【6b】快速".to_string(),
+                "balanced-model" => "【6b】均衡".to_string(),
+                "deep-model" => "【6b】极致".to_string(),
+                _ => "【6b】".to_string(),
             },
             "vendor": "user",
             "url": cb_url,
@@ -573,7 +573,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "onlyReasoning": true,
             "isDefault": i == 0,
             "reasoning": {
-                "effort": to_wb_effort(&config.reasoning_level),
+                "effort": mc.and_then(|c| c.get("effort")).and_then(|v| v.as_str()).unwrap_or("medium"),
                 "summary": "auto",
                 "canDisableThinking": can_disable,
                 "defaultEffort": default_effort,
@@ -682,10 +682,10 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let mut entry = serde_json::json!({
             "id": mid,
             "name": match mid.as_str() {
-                "fast-model" => "【选我】快速".to_string(),
-                "balanced-model" => "【选我】均衡".to_string(),
-                "deep-model" => "【选我】极致".to_string(),
-                _ => "【选我】".to_string(),
+                "fast-model" => "【6b】快速".to_string(),
+                "balanced-model" => "【6b】均衡".to_string(),
+                "deep-model" => "【6b】极致".to_string(),
+                _ => "【6b】".to_string(),
             },
             "vendor": "user",
             "url": wb_url,
@@ -700,7 +700,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         // v15.1: 必须写 reasoning 字段 — settings 面板读 model.reasoning.supportedEfforts
         if supports_reasoning {
             entry["reasoning"] = serde_json::json!({
-                "effort": to_wb_effort(&config.reasoning_level),
+                "effort": mc.and_then(|c| c.get("effort")).and_then(|v| v.as_str()).unwrap_or("medium"),
                 "summary": "auto",
                 "canDisableThinking": can_disable,
                 "defaultEffort": default_effort,
@@ -2418,7 +2418,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 20;
+const APP_VERSION: u32 = 21;
 
 /// 获取当前软件版本号
 #[tauri::command]
