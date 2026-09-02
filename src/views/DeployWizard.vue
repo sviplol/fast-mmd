@@ -48,12 +48,12 @@
         <div class="wb-confirm-box">
           <div class="wb-confirm-row"><span>平台</span><b>{{ selectedPlatforms.map(p=>PLATFORMS[p].name).join(', ') }}</b></div>
           <div class="wb-confirm-row"><span>模型数</span><b>{{ DEPLOY_MODEL_IDS.length }} 个（全部模型自动配置）</b></div>
-          <div class="wb-confirm-row"><span>模型标识</span><b>【6b】</b></div>
+          <div class="wb-confirm-row"><span>模型标识</span><b>6b</b></div>
           <div class="wb-confirm-row"><span>思考强度</span><b>低/中/高/超高/极致 5档可选（默认中档）</b></div>
           <div class="wb-confirm-row"><span>深度思考</span><b>默认关闭（省积分）</b></div>
         </div>
         <div class="wb-rate-notice" style="margin-top:12px">
-          💡 部署后认准【6b】开头的模型，鼠标触碰可切换思考强度
+          💡 部署后认准 6b 标识的模型，鼠标触碰可切换思考强度
         </div>
         <button class="wb-deploy-go" @click="doDeploy" :disabled="deploying">
           {{ deploying ? '部署中...' : '一键部署' }}
@@ -81,8 +81,8 @@
         <div class="wb-big-warning">
           <div class="wb-big-warning-title">部署完成</div>
           <div class="wb-big-warning-content">
-            全部 {{ DEPLOY_MODEL_IDS.length }} 个模型已按【6b】标识自动配置，重启后即可使用！<br><br>
-            <span style="color:#86909c">认准【6b】开头的模型（如【6b】快速、【6b】均衡、【6b】极致、【6b】:glm-5.3）<br>鼠标触碰模型可切换思考强度（低/中/高/超高/极致）</span>
+            全部 {{ DEPLOY_MODEL_IDS.length }} 个模型已按 6b 标识自动配置，重启后即可使用！<br><br>
+            <span style="color:#86909c">认准 6b 标识的模型（如 快速/均衡/极致 三档、6b:glm-5.3 等）<br>鼠标触碰模型可切换思考强度（低/中/高/超高/极致）</span>
           </div>
         </div>
 
@@ -120,23 +120,28 @@ import { openLink } from "../utils/api.js";
 const props = defineProps({ apiKey: String, serverPlatform: String });
 const emit = defineEmits(["done", "cancel"]);
 
-// 1:1 复刻客户配置提示词的模型定义（品牌=6b）— 部署时全量写入，不再让用户选择
+// v21.1: 1:1 复刻用户实测参考 models.json（20个模型，vendor=ainb 品牌标识，统一360K/8192，全模型5档思考可切换）
 const DEPLOY_MODELS = [
-  { id: "fast-model", name: "【6b】快速", iconUrl: "https://download.codebuddy.cn/model-icon/wb-fast.svg", maxInputTokens: 200000, maxOutputTokens: 48000, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: false },
-  { id: "balanced-model", name: "【6b】均衡", iconUrl: "https://download.codebuddy.cn/model-icon/wb-balanced.svg", maxInputTokens: 200000, maxOutputTokens: 48000, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: false },
-  { id: "deep-model", name: "【6b】极致", iconUrl: "https://download.codebuddy.cn/model-icon/wb-primary.svg", maxInputTokens: 200000, maxOutputTokens: 48000, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: false },
-  { id: "glm-5.3", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "high", canDisableThinking: true },
-  { id: "glm-5.2", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "high", canDisableThinking: true },
-  { id: "glm-5.1", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "high", canDisableThinking: true },
-  { id: "glm-5.0-turbo", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: true },
-  { id: "glm-5v-turbo", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: true },
-  { id: "minimax-m3", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 524288, supportsToolCall: true, supportsReasoning: false },
-  { id: "kimi-k3", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 131072, supportsToolCall: true, supportsReasoning: true, effort: "high", canDisableThinking: true },
-  { id: "kimi-k2.6", name: "【6b】", maxInputTokens: 262144, maxOutputTokens: 262144, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: true },
-  { id: "deepseek-v4-flash", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 384000, supportsToolCall: true, supportsReasoning: false },
-  { id: "deepseek-v4-pro", name: "【6b】", maxInputTokens: 1000000, maxOutputTokens: 384000, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: true },
-  { id: "hy4-preview", name: "【6b】", maxInputTokens: 128000, maxOutputTokens: 8192, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: false },
-  { id: "hy3-preview", name: "【6b】", maxInputTokens: 192000, maxOutputTokens: 128000, supportsToolCall: true, supportsReasoning: true, effort: "medium", canDisableThinking: false },
+  { id: "fast-model", name: "快速", iconUrl: "https://download.codebuddy.cn/model-icon/wb-fast.svg" },
+  { id: "balanced-model", name: "均衡", iconUrl: "https://download.codebuddy.cn/model-icon/wb-balanced.svg" },
+  { id: "deep-model", name: "极致", iconUrl: "https://download.codebuddy.cn/model-icon/wb-primary.svg" },
+  { id: "glm-5.3" },
+  { id: "glm-5.3-flash" },
+  { id: "glm-5.2" },
+  { id: "glm-5.1" },
+  { id: "glm-5.0-turbo" },
+  { id: "glm-5v-turbo" },
+  { id: "deepseek-v3" },
+  { id: "deepseek-r1" },
+  { id: "deepseek-v3.2" },
+  { id: "deepseek-v4-flash" },
+  { id: "deepseek-v4-pro" },
+  { id: "kimi-k3" },
+  { id: "kimi-k2.7" },
+  { id: "kimi-k2.6" },
+  { id: "minimax-m2.7" },
+  { id: "minimax-m3" },
+  { id: "hy3-preview" },
 ];
 const DEPLOY_MODEL_IDS = DEPLOY_MODELS.map(m => m.id);
 

@@ -53,62 +53,6 @@ fn to_anthropic_effort(level: &str) -> &str {
 }
 
 /// 根据模型id返回WorkBuddy官方vendor标识(用于显示对应图标)
-/// 根据模型id返回官方descriptionEn (跟官方entry完全一致)
-fn to_wb_description_en(model_id: &str) -> &'static str {
-    match model_id {
-        "fast-model" => "Prioritizes speed for simple tasks and quick answers.",
-        "balanced-model" => "Balances speed and quality for most everyday tasks.",
-        "deep-model" => "Prioritizes depth and accuracy for complex analysis and high-stakes tasks.",
-        "glm-5.3" => "Latest GLM flagship, 1M context, built for long-horizon tasks.",
-        "glm-5.3-flash" => "Fast and cost-effective version of GLM-5.3.",
-        "glm-5.2" => "1M context, built for long-horizon tasks.",
-        "glm-5.1" => "Previous generation flagship model.",
-        "glm-5.0-turbo" => "Fast response version.",
-        "glm-5v-turbo" => "Vision model, supports image understanding.",
-        "deepseek-v3" => "DeepSeek general chat model.",
-        "deepseek-r1" => "DeepSeek reasoning model, deep thinking.",
-        "deepseek-v3.2" => "DeepSeek V3 upgraded version.",
-        "deepseek-v4-flash" => "Fast version, low latency.",
-        "deepseek-v4-pro" => "DeepSeek flagship model, supporting 1M context window",
-        "kimi-k2.7" => "A multimodal model, good for daily use.",
-        "kimi-k2.6" => "Kimi previous version.",
-        "minimax-m2.7" => "MiniMax chat model.",
-        "minimax-m3" => "MiniMax latest version.",
-        "hy3-preview" => "HY3 preview version.",
-        "hy4-preview" => "Tencent Hunyuan HY4 preview version.",
-        "kimi-k3" => "Kimi K3 flagship model with enhanced reasoning.",
-        _ => "",
-    }
-}
-
-/// 根据模型id返回中文描述 (用于WorkBuddy问号图标点击显示)
-fn to_wb_description_zh(model_id: &str) -> &'static str {
-    match model_id {
-        "fast-model" => "优先响应速度，适合简单任务与快速问答",
-        "balanced-model" => "兼顾速度与质量，适合大多数日常工作",
-        "deep-model" => "优先深度与准确性，适合复杂分析和高要求任务",
-        "glm-5.3" => "智谱最新旗舰，1M上下文，深度推理+视觉+工具调用",
-        "glm-5.3-flash" => "智谱快速版，低延迟高性价比",
-        "glm-5.2" => "智谱旗舰，1M上下文，深度推理+视觉+工具调用",
-        "glm-5.1" => "智谱上一代旗舰模型",
-        "glm-5.0-turbo" => "快速响应版，适合日常任务",
-        "glm-5v-turbo" => "视觉模型，支持图片理解",
-        "deepseek-v3" => "DeepSeek 通用对话模型",
-        "deepseek-r1" => "DeepSeek 推理模型，深度思考",
-        "deepseek-v3.2" => "DeepSeek V3 升级版",
-        "deepseek-v4-flash" => "快速版，低延迟",
-        "deepseek-v4-pro" => "DeepSeek 专业版，支持1M上下文窗口",
-        "kimi-k2.7" => "月之暗面 Kimi 最新版，多模态",
-        "kimi-k2.6" => "Kimi 上一版本",
-        "minimax-m2.7" => "MiniMax 对话模型",
-        "minimax-m3" => "MiniMax 最新版",
-        "hy3-preview" => "腾讯混元HY3预览版，深度推理",
-        "hy4-preview" => "腾讯混元HY4预览版",
-        "kimi-k3" => "月之暗面Kimi K3最新旗舰，增强推理",
-        _ => "",
-    }
-}
-
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
@@ -534,58 +478,55 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // 所有模型统一格式 — 跟 CodeBuddy 实际能用的配置完全一致
-    // 第一个模型设 isDefault=true，让客户端启动后自动选中 GLM-5.2
+    // v21.1: 1:1 复刻实测可切换思考强度的 models.json 参考格式（与 deploy_workbuddy 一致）
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
-        // 官方1:1的5档思考强度（WorkBuddy源码白名单 low/medium/high/xhigh/max），全模型全开
-        let efforts: Vec<&str> = mc
-            .and_then(|c| c.get("supportedEfforts"))
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|e| e.as_str()).collect())
-            .unwrap_or_else(|| vec!["low", "medium", "high", "xhigh", "max"]);
-        let efforts_json: Vec<serde_json::Value> = efforts.iter().map(|e| serde_json::json!(e)).collect();
-        let default_effort = mc
-            .and_then(|c| c.get("defaultEffort"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("medium");
-        let can_disable = mc
-            .and_then(|c| c.get("canDisableThinking"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        serde_json::json!({
+        let tier_ids = ["fast-model", "balanced-model", "deep-model"];
+        let is_tier = tier_ids.contains(&mid.as_str());
+        let ctx_lengths: Vec<serde_json::Value> = if is_tier {
+            vec![serde_json::json!(100000), serde_json::json!(200000)]
+        } else {
+            vec![serde_json::json!(128000), serde_json::json!(200000)]
+        };
+        let icon = mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("");
+        let mut m = serde_json::json!({
             "id": mid,
             "name": match mid.as_str() {
-                "fast-model" => "【6b】快速".to_string(),
-                "balanced-model" => "【6b】均衡".to_string(),
-                "deep-model" => "【6b】极致".to_string(),
-                _ => "【6b】".to_string(),
+                "fast-model" => "快速".to_string(),
+                "balanced-model" => "均衡".to_string(),
+                "deep-model" => "极致".to_string(),
+                _ => "6b".to_string(),
             },
-            "vendor": "user",
-            "url": cb_url,
+            "vendor": "ainb",
             "apiKey": config.api_key,
+            "url": cb_url,
+            "maxInputTokens": 360000,
+            "maxOutputTokens": 8192,
             "supportsToolCall": true,
             "supportsImages": true,
             "supportsReasoning": true,
-            "onlyReasoning": true,
-            "isDefault": i == 0,
-            "reasoning": {
-                "effort": mc.and_then(|c| c.get("effort")).and_then(|v| v.as_str()).unwrap_or("medium"),
-                "summary": "auto",
-                "canDisableThinking": can_disable,
-                "defaultEffort": default_effort,
-                "supportedEfforts": efforts_json
+            "maxAllowedSize": 360000,
+            "contextWindow": {
+                "defaultLength": 200000,
+                "supportedLengths": ctx_lengths
             },
-            "maxInputTokens": mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000),
-            "maxOutputTokens": mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000),
-            "descriptionEn": to_wb_description_en(mid),
-            "descriptionZh": to_wb_description_zh(mid),
-            "deepThinking": true,
-            "iconUrl": mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("")
-        })
+            "reasoning": {
+                "canDisableThinking": true,
+                "defaultEffort": "medium",
+                "effort": "medium",
+                "summary": "auto",
+                "supportedEfforts": ["low", "medium", "high", "xhigh", "max"]
+            }
+        });
+        if i == 0 {
+            m["isDefault"] = serde_json::json!(true);
+        }
+        if !icon.is_empty() {
+            m["iconUrl"] = serde_json::json!(icon);
+        }
+        m
     }).collect();
 
     // 读取现有 models.json, 保留官方模型, 只替换 vendor=user 的模型
@@ -600,12 +541,12 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         let _ = fs::copy(&models_path, &backup_path);
     }
 
-    // 分离官方模型和旧的自定义模型
+    // 分离官方模型和旧的自定义模型（vendor=ainb 是我们的品牌标识；兼容旧版 vendor=user）
     let mut official_models: Vec<serde_json::Value> = Vec::new();
     if let Some(models) = existing.get("models").and_then(|m| m.as_array()) {
         for m in models {
             let vendor = m.get("vendor").and_then(|v| v.as_str()).unwrap_or("");
-            if vendor != "user" {
+            if vendor != "user" && vendor != "ainb" {
                 official_models.push(m.clone());
             }
         }
@@ -663,49 +604,49 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
-        let supports_reasoning = mc.and_then(|c| c.get("supportsReasoning")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let supports_tools = mc.and_then(|c| c.get("supportsToolCall")).and_then(|v| v.as_bool()).unwrap_or(true);
-        let max_input = mc.and_then(|c| c.get("maxInputTokens")).and_then(|v| v.as_u64()).unwrap_or(1000000);
-        let max_output = mc.and_then(|c| c.get("maxOutputTokens")).and_then(|v| v.as_u64()).unwrap_or(128000);
-        // 5档思考强度(WorkBuddy源码白名单 low/medium/high/xhigh/max)— 全模型全开
-        let efforts: Vec<String> = if supports_reasoning {
-            mc.and_then(|c| c.get("supportedEfforts"))
-              .and_then(|v| v.as_array())
-              .map(|arr| arr.iter().filter_map(|e| e.as_str().map(String::from)).collect())
-              .unwrap_or_else(|| vec!["low".to_string(), "medium".to_string(), "high".to_string(), "xhigh".to_string(), "max".to_string()])
-        } else { vec![] };
-        let efforts_json: Vec<serde_json::Value> = efforts.iter().map(|e| serde_json::json!(e)).collect();
-        let default_effort = mc.and_then(|c| c.get("defaultEffort"))
-            .and_then(|v| v.as_str()).unwrap_or("medium");
-        let can_disable = mc.and_then(|c| c.get("canDisableThinking"))
-            .and_then(|v| v.as_bool()).unwrap_or(true);
+        // v21.1: 1:1 复刻用户实测可切换思考强度的 models.json 参考格式
+        // (vendor=品牌标识 / 统一360K+8192 / contextWindow / 全模型reasoning 5档 canDisable=true)
+        let tier_ids = ["fast-model", "balanced-model", "deep-model"];
+        let is_tier = tier_ids.contains(&mid.as_str());
+        // contextWindow: 三档=[100000,200000], 其他=[128000,200000]
+        let ctx_lengths: Vec<serde_json::Value> = if is_tier {
+            vec![serde_json::json!(100000), serde_json::json!(200000)]
+        } else {
+            vec![serde_json::json!(128000), serde_json::json!(200000)]
+        };
+        let icon = mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("");
         let mut entry = serde_json::json!({
             "id": mid,
             "name": match mid.as_str() {
-                "fast-model" => "【6b】快速".to_string(),
-                "balanced-model" => "【6b】均衡".to_string(),
-                "deep-model" => "【6b】极致".to_string(),
-                _ => "【6b】".to_string(),
+                "fast-model" => "快速".to_string(),
+                "balanced-model" => "均衡".to_string(),
+                "deep-model" => "极致".to_string(),
+                _ => "6b".to_string(),
             },
-            "vendor": "user",
-            "url": wb_url,
+            "vendor": "ainb",
             "apiKey": config.api_key,
-            "maxInputTokens": max_input,
-            "maxOutputTokens": max_output,
-            "supportsToolCall": supports_tools,
+            "url": wb_url,
+            "maxInputTokens": 360000,
+            "maxOutputTokens": 8192,
+            "supportsToolCall": true,
             "supportsImages": true,
-            "supportsReasoning": supports_reasoning,
-            "iconUrl": mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("")
-        });
-        // v15.1: 必须写 reasoning 字段 — settings 面板读 model.reasoning.supportedEfforts
-        if supports_reasoning {
-            entry["reasoning"] = serde_json::json!({
-                "effort": mc.and_then(|c| c.get("effort")).and_then(|v| v.as_str()).unwrap_or("medium"),
+            "supportsReasoning": true,
+            "maxAllowedSize": 360000,
+            "contextWindow": {
+                "defaultLength": 200000,
+                "supportedLengths": ctx_lengths
+            },
+            "reasoning": {
+                "canDisableThinking": true,
+                "defaultEffort": "medium",
+                "effort": "medium",
                 "summary": "auto",
-                "canDisableThinking": can_disable,
-                "defaultEffort": default_effort,
-                "supportedEfforts": efforts_json
-            });
+                "supportedEfforts": ["low", "medium", "high", "xhigh", "max"]
+            }
+        });
+        // 三档带官方图标URL
+        if !icon.is_empty() {
+            entry["iconUrl"] = serde_json::json!(icon);
         }
         entry
     }).collect();
