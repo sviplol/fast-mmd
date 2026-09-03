@@ -478,17 +478,25 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
         format!("{}/v1", config.base_url.trim_end_matches('/'))
     };
 
-    // v21.1: 1:1 复刻实测可切换思考强度的 models.json 参考格式（与 deploy_workbuddy 一致）
+    // v21.2: 上下文按官方 copilot.tencent.com/v3/config 实测值 1:1（与 deploy_workbuddy 一致）
     let new_models: Vec<serde_json::Value> = config.selected_model_ids.iter().enumerate().map(|(i, mid)| {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
-        let tier_ids = ["fast-model", "balanced-model", "deep-model"];
-        let is_tier = tier_ids.contains(&mid.as_str());
-        let ctx_lengths: Vec<serde_json::Value> = if is_tier {
-            vec![serde_json::json!(100000), serde_json::json!(200000)]
-        } else {
-            vec![serde_json::json!(128000), serde_json::json!(200000)]
+        let (max_in, max_out, ctx): (u64, u64, Option<Vec<u64>>) = match mid.as_str() {
+            "glm-5.3" => (1000000, 48000, Some(vec![200000, 1000000])),
+            "glm-5.3-flash" => (1000000, 32000, Some(vec![200000, 1000000])),
+            "glm-5.2" => (1000000, 48000, Some(vec![200000, 1000000])),
+            "deepseek-v4-pro" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "deepseek-v4-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "kimi-k3" => (1000000, 32000, Some(vec![200000, 1000000])),
+            "minimax-m3" => (512000, 128000, Some(vec![200000, 512000])),
+            "fast-model" | "balanced-model" | "deep-model" => (200000, 8192, Some(vec![200000, 1000000])),
+            "glm-5.1" | "glm-5.0-turbo" | "glm-5v-turbo" | "minimax-m2.7" => (200000, 8192, None),
+            "deepseek-v3" | "deepseek-r1" | "deepseek-v3.2" => (96000, 8192, None),
+            "kimi-k2.7" | "kimi-k2.6" => (256000, 8192, None),
+            "hy3-preview" => (192000, 8192, None),
+            _ => (200000, 8192, None),
         };
         let icon = mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("");
         let mut m = serde_json::json!({
@@ -502,16 +510,12 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "vendor": "ainb",
             "apiKey": config.api_key,
             "url": cb_url,
-            "maxInputTokens": 360000,
-            "maxOutputTokens": 8192,
+            "maxInputTokens": max_in,
+            "maxOutputTokens": max_out,
             "supportsToolCall": true,
             "supportsImages": true,
             "supportsReasoning": true,
-            "maxAllowedSize": 360000,
-            "contextWindow": {
-                "defaultLength": 200000,
-                "supportedLengths": ctx_lengths
-            },
+            "maxAllowedSize": max_in,
             "reasoning": {
                 "canDisableThinking": true,
                 "defaultEffort": "medium",
@@ -520,6 +524,12 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
                 "supportedEfforts": ["low", "medium", "high", "xhigh", "max"]
             }
         });
+        if let Some(lengths) = ctx {
+            m["contextWindow"] = serde_json::json!({
+                "defaultLength": 200000,
+                "supportedLengths": lengths
+            });
+        }
         if i == 0 {
             m["isDefault"] = serde_json::json!(true);
         }
@@ -604,15 +614,22 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
         let mc = config.model_configs.iter().find(|m| {
             m.get("id").and_then(|v| v.as_str()) == Some(mid.as_str())
         });
-        // v21.1: 1:1 复刻用户实测可切换思考强度的 models.json 参考格式
-        // (vendor=品牌标识 / 统一360K+8192 / contextWindow / 全模型reasoning 5档 canDisable=true)
-        let tier_ids = ["fast-model", "balanced-model", "deep-model"];
-        let is_tier = tier_ids.contains(&mid.as_str());
-        // contextWindow: 三档=[100000,200000], 其他=[128000,200000]
-        let ctx_lengths: Vec<serde_json::Value> = if is_tier {
-            vec![serde_json::json!(100000), serde_json::json!(200000)]
-        } else {
-            vec![serde_json::json!(128000), serde_json::json!(200000)]
+        // v21.2: 上下文按官方 copilot.tencent.com/v3/config 实测值 1:1
+        // (maxInput=maxAllowedSize同值; 官方无选择器的模型不写contextWindow)
+        let (max_in, max_out, ctx): (u64, u64, Option<Vec<u64>>) = match mid.as_str() {
+            "glm-5.3" => (1000000, 48000, Some(vec![200000, 1000000])),
+            "glm-5.3-flash" => (1000000, 32000, Some(vec![200000, 1000000])),
+            "glm-5.2" => (1000000, 48000, Some(vec![200000, 1000000])),
+            "deepseek-v4-pro" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "deepseek-v4-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "kimi-k3" => (1000000, 32000, Some(vec![200000, 1000000])),
+            "minimax-m3" => (512000, 128000, Some(vec![200000, 512000])),
+            "fast-model" | "balanced-model" | "deep-model" => (200000, 8192, Some(vec![200000, 1000000])),
+            "glm-5.1" | "glm-5.0-turbo" | "glm-5v-turbo" | "minimax-m2.7" => (200000, 8192, None),
+            "deepseek-v3" | "deepseek-r1" | "deepseek-v3.2" => (96000, 8192, None),
+            "kimi-k2.7" | "kimi-k2.6" => (256000, 8192, None),
+            "hy3-preview" => (192000, 8192, None),
+            _ => (200000, 8192, None),
         };
         let icon = mc.and_then(|c| c.get("iconUrl")).and_then(|v| v.as_str()).unwrap_or("");
         let mut entry = serde_json::json!({
@@ -626,16 +643,12 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "vendor": "ainb",
             "apiKey": config.api_key,
             "url": wb_url,
-            "maxInputTokens": 360000,
-            "maxOutputTokens": 8192,
+            "maxInputTokens": max_in,
+            "maxOutputTokens": max_out,
             "supportsToolCall": true,
             "supportsImages": true,
             "supportsReasoning": true,
-            "maxAllowedSize": 360000,
-            "contextWindow": {
-                "defaultLength": 200000,
-                "supportedLengths": ctx_lengths
-            },
+            "maxAllowedSize": max_in,
             "reasoning": {
                 "canDisableThinking": true,
                 "defaultEffort": "medium",
@@ -644,6 +657,13 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
                 "supportedEfforts": ["low", "medium", "high", "xhigh", "max"]
             }
         });
+        // 官方带选择器的模型写 contextWindow
+        if let Some(lengths) = ctx {
+            entry["contextWindow"] = serde_json::json!({
+                "defaultLength": 200000,
+                "supportedLengths": lengths
+            });
+        }
         // 三档带官方图标URL
         if !icon.is_empty() {
             entry["iconUrl"] = serde_json::json!(icon);
