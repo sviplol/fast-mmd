@@ -488,7 +488,7 @@ fn deploy_codebuddy(config: &DeployConfig) -> Result<String, String> {
             "glm-5.3-flash" => (1000000, 32000, Some(vec![200000, 1000000])),
             "glm-5.2" => (1000000, 48000, Some(vec![200000, 1000000])),
             "deepseek-v4-pro" => (1000000, 50000, Some(vec![200000, 1000000])),
-            "deepseek-v4-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "deepseek-v4.1-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
             "kimi-k3" => (1000000, 32000, Some(vec![200000, 1000000])),
             "minimax-m3" => (512000, 128000, Some(vec![200000, 512000])),
             "fast-model" | "balanced-model" | "deep-model" => (200000, 8192, Some(vec![200000, 1000000])),
@@ -621,7 +621,7 @@ fn deploy_workbuddy(config: &DeployConfig) -> Result<String, String> {
             "glm-5.3-flash" => (1000000, 32000, Some(vec![200000, 1000000])),
             "glm-5.2" => (1000000, 48000, Some(vec![200000, 1000000])),
             "deepseek-v4-pro" => (1000000, 50000, Some(vec![200000, 1000000])),
-            "deepseek-v4-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
+            "deepseek-v4.1-flash" => (1000000, 50000, Some(vec![200000, 1000000])),
             "kimi-k3" => (1000000, 32000, Some(vec![200000, 1000000])),
             "minimax-m3" => (512000, 128000, Some(vec![200000, 512000])),
             "fast-model" | "balanced-model" | "deep-model" => (200000, 8192, Some(vec![200000, 1000000])),
@@ -2379,7 +2379,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 21;
+const APP_VERSION: u32 = 22;
 
 /// 获取当前软件版本号
 #[tauri::command]

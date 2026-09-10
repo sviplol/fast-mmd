@@ -134,7 +134,7 @@ const DEPLOY_MODELS = [
   { id: "deepseek-v3" },
   { id: "deepseek-r1" },
   { id: "deepseek-v3.2" },
-  { id: "deepseek-v4-flash" },
+  { id: "deepseek-v4.1-flash" },
   { id: "deepseek-v4-pro" },
   { id: "kimi-k3" },
   { id: "kimi-k2.7" },
