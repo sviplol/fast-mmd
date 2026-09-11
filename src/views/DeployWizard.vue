@@ -70,19 +70,14 @@
         </div>
 
         <div v-if="successPlatforms.length > 0" class="wb-restart-section">
-          <div class="wb-restart-title">🔄 配置已写入，请重启以下软件使配置生效：</div>
-          <div class="wb-restart-buttons">
-            <button v-for="p in successPlatforms" :key="p" class="wb-restart-btn" @click="restartApp(p)">
-              {{ PLATFORMS[p]?.icon }} 重启 {{ PLATFORMS[p]?.name }}
-            </button>
-          </div>
+          <div class="wb-restart-title">✅ 配置已写入，WorkBuddy 热加载自动生效，无需重启！</div>
         </div>
 
         <div class="wb-big-warning">
           <div class="wb-big-warning-title">部署完成</div>
           <div class="wb-big-warning-content">
-            全部 {{ DEPLOY_MODEL_IDS.length }} 个模型已按 6b 标识自动配置，重启后即可使用！<br><br>
-            <span style="color:#86909c">认准 6b 标识的模型（如 快速/均衡/极致 三档、6b:glm-5.3 等）<br>鼠标触碰模型可切换思考强度（低/中/高/超高/极致）</span>
+            全部 {{ DEPLOY_MODEL_IDS.length }} 个模型已按 6b 标识自动配置，<b style="color:#00b42a">无需重启，立即生效！</b><br><br>
+            <span style="color:#86909c">现在切到 WorkBuddy 窗口 → 打开模型下拉 → 认准 6b 标识的模型（如 快速/均衡/极致 三档、6b:glm-5.3 等）<br>鼠标触碰模型可切换思考强度（低/中/高/超高/极致）</span>
           </div>
         </div>
 

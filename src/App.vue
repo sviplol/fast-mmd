@@ -303,6 +303,11 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  24: [
+    "支持 WorkBuddy 热加载：部署时 WorkBuddy 需在后台运行，配置写入后自动生效，无需重启",
+    "通过进程命令行自动识别 models.json 存放位置（--user-data-dir 推断配置目录）",
+    "修复: 偶发 models.json 变空 [] — 写入后延迟复验，被 WorkBuddy 覆盖时自动重写",
+  ],
   23: [
     "修复: 部分用户部署后 models.json 为空的问题 — 写入改为原子操作+读回验证+失败自动重试",
     "修复: 部署前等待 WorkBuddy 进程完全退出(循环确认最多15秒), 防止文件占用导致写入失败",
