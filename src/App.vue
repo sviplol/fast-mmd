@@ -303,6 +303,10 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  25: [
+    "修复: 部署后无任何模型的严重问题 — 配置目录解析的引号匹配错误导致部署中断",
+    "真实验证: WorkBuddy 运行中部署 → 20个模型写入+热加载稳定 → 重启后模型完整保留",
+  ],
   24: [
     "支持 WorkBuddy 热加载：部署时 WorkBuddy 需在后台运行，配置写入后自动生效，无需重启",
     "通过进程命令行自动识别 models.json 存放位置（--user-data-dir 推断配置目录）",

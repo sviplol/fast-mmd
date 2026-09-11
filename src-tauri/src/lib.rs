@@ -907,9 +907,11 @@ fn workbuddy_config_dir() -> std::path::PathBuf {
             if let Some(idx) = cmd.find("--user-data-dir=") {
                 let rest = &cmd[idx + "--user-data-dir=".len()..];
                 let path = if rest.starts_with('"') {
-                    // 带引号: 取到下一个引号
-                    match rest.find('"') {
-                        Some(end) => rest[1..end].to_string(),
+                    // 带引号: 跳过开头引号, 在剩余部分找闭合引号
+                    // (v24.1 修复: 旧代码 rest.find('"') 匹配到开头引号导致 rest[1..0] panic —
+                    //  panic 会让部署线程崩溃, models.json 从未写入, 用户部署后没有任何模型)
+                    match rest[1..].find('"') {
+                        Some(end) => rest[1..end + 1].to_string(),
                         None => return default,
                     }
                 } else {
@@ -2595,7 +2597,7 @@ fn get_error_info(code: &str) -> serde_json::Value {
 }
 
 /// 软件版本号（每次发布递增，与远程 /api/fastmmd/version 的 version 字段比对）
-const APP_VERSION: u32 = 24;
+const APP_VERSION: u32 = 25;
 
 /// 获取当前软件版本号
 #[tauri::command]
