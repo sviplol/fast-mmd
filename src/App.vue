@@ -303,6 +303,10 @@ const guideVideos = [
 ];
 
 const CHANGELOG = {
+  23: [
+    "修复: 部分用户部署后 models.json 为空的问题 — 写入改为原子操作+读回验证+失败自动重试",
+    "修复: 部署前等待 WorkBuddy 进程完全退出(循环确认最多15秒), 防止文件占用导致写入失败",
+  ],
   22: [
     "DeepSeek V4 Flash 升级为 V4.1 Flash（上游已支持，旧配置自动兼容）",
   ],
